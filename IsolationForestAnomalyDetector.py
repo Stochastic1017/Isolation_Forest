@@ -12,10 +12,7 @@ class  IsolationForestAnomalyDetector():
         # base case: X is a single isolated point
         if len(X) <= 1:
             return (X, np.array([]).reshape(0, self.d), 0, 0)
-
-        # base case: X contains only iterations of a single value
-        if X.min() == X.max():
-            raise
+        
         # Choose a random axis from {0, ..., d-1} on which to cut
         # Discrete uniform distribution, i.e., P(X=i) = 1/d for all i
         random_axis_to_cut = np.random.randint(low=0, high=self.d)
@@ -37,10 +34,10 @@ class  IsolationForestAnomalyDetector():
     def iTree(self, X=None, counter=0, limit=100):
         
         # base case: all points are isolated or height limit reached
-        if (len(X) <= 1) or (counter >= limit):
+        if (len(X) <= 1) or (counter >= limit) or (np.all(X == X[0])):
             # Create external node when point is isolated
             return {'type': 'external', 'size': len(X)}
-
+        
         # Split left and right from random point on random axis
         left_split, right_split, split_axis, split_point = self.binary_partition(X)
 
