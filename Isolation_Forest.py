@@ -50,7 +50,7 @@ class  IsolationForestAnomalyDetector():
             'split_point': split_point
         }
 
-    def expected_length_of_unsuccessful_search_in_RBST(self, rivial):
+    def expected_length_of_unsuccessful_search_in_RBST(self, length):
 
         # trivial case
         if length <= 1:
