@@ -248,8 +248,8 @@ def generate_single_step_random_binary_partition(M, n_clicks):
         subplot_titles=(
             "1D Binary Partition",
             "2D Binary Partition",
-            "1D Tree Node",
-            "2D Tree Node"
+            "",
+            ""
         ),
         horizontal_spacing=0.1,
         vertical_spacing=0.15
@@ -273,17 +273,6 @@ def generate_single_step_random_binary_partition(M, n_clicks):
      split_1d_from_right,
      random_1d_axis_to_cut,
      random_1d_point_on_axis_to_cut) = one_dimensional_iForest_model.binary_partition()
-
-    print("\n#########################################\n")
-    print("\nsplit_1d_from_left:\n")
-    print(split_1d_from_left)
-    print("\nsplit_1d_from_right:\n")
-    print(split_1d_from_right)
-    print("\nrandom_1d_axis_to_cut:\n")
-    print(random_1d_axis_to_cut)
-    print("\nrandom_1d_point_on_axis_to_cut:\n")
-    print(random_1d_point_on_axis_to_cut)
-    print("\n#########################################\n")
 
     # === Top-left: 1D points + split + shaded intervals ===
     fig.add_trace(
@@ -377,17 +366,29 @@ def generate_single_step_random_binary_partition(M, n_clicks):
 
     # === Bottom-left: 1D tree node diagram ===
     
+    # === Bottom-left: 1D tree node diagram ===
+    
+    # Calculate proportional sizes for nodes
+    n_total_1d = len(random_one_dimensional_array)
+    n_left_1d = len(split_1d_from_left)
+    n_right_1d = len(split_1d_from_right)
+    
+    # Scale sizes proportionally (with min/max bounds for visibility)
+    base_size = 35
+    left_size_1d = max(20, min(45, base_size * (n_left_1d / n_total_1d)))
+    right_size_1d = max(20, min(45, base_size * (n_right_1d / n_total_1d)))
+    
     # Root node
     fig.add_trace(
         go.Scatter(
             x=[0.5],
             y=[1.0],
             mode="markers+text",
-            text=[f"<b>Root</b><br>n={len(random_one_dimensional_array)}"],
+            text=[f"<b>Root</b><br>n={n_total_1d}"],
             textposition="top center",
             textfont=dict(size=11, color='#2b2d42'),
             marker=dict(
-                size=35,
+                size=base_size,
                 color='#f8f9fa',
                 line=dict(color='#2b2d42', width=2.5),
                 symbol='circle'
@@ -404,11 +405,11 @@ def generate_single_step_random_binary_partition(M, n_clicks):
             x=[0.2],
             y=[0.0],
             mode="markers+text",
-            text=[f"<b>Left</b><br>n={len(split_1d_from_left)}"],
+            text=[f"<b>Left</b><br>n={n_left_1d}"],
             textposition="bottom center",
             textfont=dict(size=10, color='rgb(65, 105, 225)'),
             marker=dict(
-                size=30,
+                size=left_size_1d,
                 color='rgba(65, 105, 225, 0.15)',
                 line=dict(color='rgb(65, 105, 225)', width=2.5),
                 symbol='circle'
@@ -425,11 +426,11 @@ def generate_single_step_random_binary_partition(M, n_clicks):
             x=[0.8],
             y=[0.0],
             mode="markers+text",
-            text=[f"<b>Right</b><br>n={len(split_1d_from_right)}"],
+            text=[f"<b>Right</b><br>n={n_right_1d}"],
             textposition="bottom center",
             textfont=dict(size=10, color='rgb(220, 20, 60)'),
             marker=dict(
-                size=30,
+                size=right_size_1d,
                 color='rgba(220, 20, 60, 0.15)',
                 line=dict(color='rgb(220, 20, 60)', width=2.5),
                 symbol='circle'
@@ -440,7 +441,7 @@ def generate_single_step_random_binary_partition(M, n_clicks):
         row=2, col=1
     )
     
-    # Connecting lines with labels
+    # Connecting lines
     fig.add_trace(
         go.Scatter(
             x=[0.5, 0.2, None, 0.5, 0.8],
@@ -480,6 +481,20 @@ def generate_single_step_random_binary_partition(M, n_clicks):
         row=2, col=1
     )
     
+    # Add split point info box (to mirror 2D style)
+    fig.add_annotation(
+        x=0.5,
+        y=1.35,
+        text=f"<b>Split:</b> at x = {random_1d_point_on_axis_to_cut:.3f}",
+        showarrow=False,
+        font=dict(size=10, color='#2b2d42', family='Arial'),
+        bgcolor='rgba(237, 242, 244, 0.95)',
+        bordercolor='#2b2d42',
+        borderwidth=2,
+        borderpad=6,
+        row=2, col=1
+    )
+    
     fig.update_xaxes(
         visible=False, 
         range=[0, 1],
@@ -487,7 +502,7 @@ def generate_single_step_random_binary_partition(M, n_clicks):
     )
     fig.update_yaxes(
         visible=False, 
-        range=[-0.3, 1.3],
+        range=[-0.3, 1.35],
         row=2, col=1
     )
     
@@ -665,7 +680,17 @@ def generate_single_step_random_binary_partition(M, n_clicks):
     fig.update_xaxes(title_text="x₁", row=1, col=2)
     fig.update_yaxes(title_text="x₂", row=1, col=2)
 
-    # === Bottom-left: 2D tree node diagram ===
+    # === Bottom-right: 2D tree node diagram ===
+    
+    # Calculate proportional sizes for nodes
+    n_total_2d = len(random_two_dimensional_array)
+    n_left_2d = len(split_2d_from_left)
+    n_right_2d = len(split_2d_from_right)
+    
+    # Scale sizes proportionally (with min/max bounds for visibility)
+    base_size = 35
+    left_size_2d = max(20, min(45, base_size * (n_left_2d / n_total_2d)))
+    right_size_2d = max(20, min(45, base_size * (n_right_2d / n_total_2d)))
     
     # Root node
     fig.add_trace(
@@ -673,11 +698,11 @@ def generate_single_step_random_binary_partition(M, n_clicks):
             x=[0.5],
             y=[1.0],
             mode="markers+text",
-            text=[f"<b>Root</b><br>n={len(random_two_dimensional_array)}"],
+            text=[f"<b>Root</b><br>n={n_total_2d}"],
             textposition="top center",
             textfont=dict(size=11, color='#2b2d42'),
             marker=dict(
-                size=35,
+                size=base_size,
                 color='#f8f9fa',
                 line=dict(color='#2b2d42', width=2.5),
                 symbol='circle'
@@ -694,11 +719,11 @@ def generate_single_step_random_binary_partition(M, n_clicks):
             x=[0.2],
             y=[0.0],
             mode="markers+text",
-            text=[f"<b>Left</b><br>n={len(split_2d_from_left)}"],
+            text=[f"<b>Left</b><br>n={n_left_2d}"],
             textposition="bottom center",
             textfont=dict(size=10, color='rgb(65, 105, 225)'),
             marker=dict(
-                size=30,
+                size=left_size_2d,
                 color='rgba(65, 105, 225, 0.15)',
                 line=dict(color='rgb(65, 105, 225)', width=2.5),
                 symbol='circle'
@@ -715,11 +740,11 @@ def generate_single_step_random_binary_partition(M, n_clicks):
             x=[0.8],
             y=[0.0],
             mode="markers+text",
-            text=[f"<b>Right</b><br>n={len(split_2d_from_right)}"],
+            text=[f"<b>Right</b><br>n={n_right_2d}"],
             textposition="bottom center",
             textfont=dict(size=10, color='rgb(220, 20, 60)'),
             marker=dict(
-                size=30,
+                size=right_size_2d,
                 color='rgba(220, 20, 60, 0.15)',
                 line=dict(color='rgb(220, 20, 60)', width=2.5),
                 symbol='circle'
@@ -730,7 +755,7 @@ def generate_single_step_random_binary_partition(M, n_clicks):
         row=2, col=2
     )
     
-    # Connecting lines with labels
+    # Connecting lines
     fig.add_trace(
         go.Scatter(
             x=[0.5, 0.2, None, 0.5, 0.8],
@@ -743,11 +768,17 @@ def generate_single_step_random_binary_partition(M, n_clicks):
         row=2, col=2
     )
     
+    # Determine which axis was split and format accordingly
+    if random_2d_axis_to_cut == 0:
+        axis_name = "x₁"
+    else:
+        axis_name = "x₂"
+    
     # Add split condition annotations on the edges
     fig.add_annotation(
         x=0.35,
         y=0.5,
-        text=f"x < {random_2d_point_on_axis_to_cut:.2f}",
+        text=f"{axis_name} < {random_2d_point_on_axis_to_cut:.2f}",
         showarrow=False,
         font=dict(size=9, color='#495057', family='monospace'),
         bgcolor='rgba(255, 255, 255, 0.9)',
@@ -760,13 +791,28 @@ def generate_single_step_random_binary_partition(M, n_clicks):
     fig.add_annotation(
         x=0.65,
         y=0.5,
-        text=f"x ≥ {random_2d_point_on_axis_to_cut:.2f}",
+        text=f"{axis_name} ≥ {random_2d_point_on_axis_to_cut:.2f}",
         showarrow=False,
         font=dict(size=9, color='#495057', family='monospace'),
         bgcolor='rgba(255, 255, 255, 0.9)',
         bordercolor='#dee2e6',
         borderwidth=1,
         borderpad=3,
+        row=2, col=2
+    )
+    
+    # Add split point info box
+    split_direction = "Vertical" if random_2d_axis_to_cut == 0 else "Horizontal"
+    fig.add_annotation(
+        x=0.5,
+        y=1.35,
+        text=f"<b>Split:</b> {split_direction} at {axis_name} = {random_2d_point_on_axis_to_cut:.3f}",
+        showarrow=False,
+        font=dict(size=10, color='#2b2d42', family='Arial'),
+        bgcolor='rgba(237, 242, 244, 0.95)',
+        bordercolor='#2b2d42',
+        borderwidth=2,
+        borderpad=6,
         row=2, col=2
     )
     
@@ -777,7 +823,7 @@ def generate_single_step_random_binary_partition(M, n_clicks):
     )
     fig.update_yaxes(
         visible=False, 
-        range=[-0.3, 1.3],
+        range=[-0.3, 1.35],
         row=2, col=2
     )
     
