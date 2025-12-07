@@ -71,27 +71,30 @@ binary_partition_layout = [
             html.H3("Mathematical Description"),
             dcc.Markdown(
                 r'''
-                Let $X \in \mathbb{R}^{M \times d}$, i.e., $X = \begin{pmatrix} \vec{x_{1}}\\ \vec{x_{2}}\\ \vdots\\ \vec{x_{M}} \end{pmatrix} = \begin{pmatrix} x_{11} & x_{12} & \dots & x_{1d}\\
+                Let $X \in \mathbb{R}^{M \times d}$, i.e., $X = \begin{pmatrix} \vec{x_{1}}\\ \vec{x_{2}}\\ \vdots\\ \vec{x_{M}} \end{pmatrix}
+                                                              = \begin{pmatrix} x_{11} & x_{12} & \dots & x_{1d}\\
                                                                                 x_{21} & x_{21} & \dots & x_{2d}\\
                                                                                 \vdots & \vdots & \vdots & \vdots\\
-                                                                                x_{M1} & x_{M2} & \dots & x_{Md} \end{pmatrix}$ be the Data Matrix.
+                                                                                x_{M1} & x_{M2} & \dots & x_{Md} \end{pmatrix}$
+                be the Data Matrix.
 
                 A binary partition chooses:
 
                 1. A random feature (axis) along which to make the cut, where $\mathbb{P}(X=q) = \frac{1}{d}$ and $q \in \{1,\dots,d\}$
                    $$
-                   q \sim \text{DiscreteUniform}\{ 1,2,\dots,d \}
+                   q \sim \text{DiscreteUniform}\{ 1, 2, \dots, d \}
                    $$
 
-                2. A random point along the axis where we make the cut, such that $P(X \ge p) = 1/(x_{q,max}, x_{q,min})$ where $x_{q,max} = max_j x_{qj}$ and $x_{q,min} = min_k x_{qk}$
+                2. A random point along the axis where we make the cut, such that $P(X \ge p) = \frac{1}{x_{q,max} - x_{q,min}}$
+                   where $x_{q,\text{max}} = \max_{1 \le j \le M}\;x_{jq}$ and $x_{q,\text{min}} = \min_{1 \le k \le M}\;x_{kq}$
                    $$
-                   p \sim \text{ContinuousUniform}(x_{q,min} - x_{q,max})
+                   p \sim \text{ContinuousUniform}(x_{q,\text{min}}, x_{q,\text{max}})
                    $$
 
                 3. Create two subsets such that:
                    $$
-                   X_{\text{left}} = \{ \vec{x_{l}} \in X : x_{ql} < p \}, \quad
-                   X_{\text{right}} = \{ \vec{x_{l}} \in X : x_{ql} \ge p \}
+                   X_{\text{left}} = \{ \vec{x_{l}} \in X : x_{lq} < p \}, \quad
+                   X_{\text{right}} = \{ \vec{x_{r}} \in X : x_{rq} \ge p \}
                    $$
 
                 ''', mathjax=True
@@ -108,22 +111,63 @@ binary_partition_layout = [
     }),
 
     html.Div([
-        html.Button(
-            "Generate Random Split",
-            id='bp-generate-split-button',
-            n_clicks=0,
+        html.H3(
+            "Binary Partition Controls",
             style={
-                'backgroundColor': '#2b2d42',
-                'color': 'white',
-                'border': 'none',
-                'borderRadius': '8px',
-                'padding': '10px 20px',
-                'cursor': 'pointer',
+                'marginBottom': '10px',
                 'fontWeight': 'bold',
-                'boxShadow': '2px 2px 5px rgba(0,0,0,0.2)'
+                'color': '#2b2d42',
+                'borderBottom': '2px solid #edf2f4',
+                'paddingBottom': '8px'
             }
         ),
-    ], style={'textAlign': 'left', 'marginBottom': '20px'}),
+
+        html.Div([
+            html.Div([
+                html.Label(
+                    "Number of Points:",
+                    style={'fontWeight': '600', 'marginBottom': '6px', 'display': 'block'}
+                ),
+                dcc.Slider(
+                    0, 520, 10,
+                    value=20,
+                    id='bp-number-of-points-slider',
+                    marks={0: '0', 252: '252', 520: '520'},
+                    tooltip={"always_visible": False},
+                )
+            ], style={'flex': '1', 'marginRight': '20px'}),
+
+            html.Div([
+                html.Button(
+                    "Generate Random Split",
+                    id='bp-generate-split-button',
+                    n_clicks=0,
+                    style={
+                        'backgroundColor': '#2b2d42',
+                        'color': 'white',
+                        'border': 'none',
+                        'borderRadius': '8px',
+                        'padding': '10px 22px',
+                        'cursor': 'pointer',
+                        'fontWeight': 'bold',
+                        'boxShadow': '2px 2px 5px rgba(0,0,0,0.15)',
+                        'transition': '0.2s'
+                    }
+                )
+            ], style={'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'center'})
+        ],
+        style={
+            'display': 'flex',
+            'flexDirection': 'row',
+            'alignItems': 'center',
+            'padding': '15px',
+            'backgroundColor': 'white',
+            'borderRadius': '10px',
+            'boxShadow': '0px 3px 8px rgba(0,0,0,0.07)',
+            'border': '1px solid #edf2f4',
+            'marginBottom': '20px'
+        })
+    ]),
 
     html.Div(
         [
@@ -138,15 +182,6 @@ binary_partition_layout = [
         style={
             'textAlign': 'center',
             'width': '100%'
-        }
-    ),
-
-    html.Div(
-        id='bp-split-summary',
-        style={
-            'marginTop': '10px',
-            'fontWeight': 'bold',
-            'color': '#333'
         }
     ),
 
@@ -198,9 +233,12 @@ binary_partition_layout = [
 
 @callback(
     Output('bp-scatter-plot', 'figure'),
-    Input('bp-generate-split-button', 'n_clicks')
+    [
+        Input('bp-number-of-points-slider', 'value'),
+        Input('bp-generate-split-button', 'n_clicks')
+    ]
 )
-def generate_single_step_random_binary_partition(n_clicks):
+def generate_single_step_random_binary_partition(M, n_clicks):
 
     ##################
     # Build 2x2 figure
@@ -224,7 +262,7 @@ def generate_single_step_random_binary_partition(n_clicks):
     random_one_dimensional_array = np.random.normal(
         loc=0.0,
         scale=1.0,
-        size=20
+        size=M
     ).reshape(-1, 1)
 
     one_dimensional_iForest_model = IsolationForestAnomalyDetector(
@@ -256,6 +294,7 @@ def generate_single_step_random_binary_partition(n_clicks):
             name='1D Left Split',
             marker=dict(
                 size=12,
+                opacity=0.75,
                 color='rgb(65, 105, 225)',
                 line=dict(color='rgb(30, 60, 180)', width=1)
             )
@@ -271,6 +310,7 @@ def generate_single_step_random_binary_partition(n_clicks):
             name='1D Right Split',
             marker=dict(
                 size=12,
+                opacity=0.75,
                 color='rgb(220, 20, 60)',
                 line=dict(color='rgb(180, 10, 40)', width=1)
             )
@@ -332,46 +372,132 @@ def generate_single_step_random_binary_partition(n_clicks):
         row=1, col=1
     )
 
-    fig.update_xaxes(title_text="X", row=1, col=1)
+    fig.update_xaxes(title_text="x", row=1, col=1)
     fig.update_yaxes(visible=False, row=1, col=1)
 
     # === Bottom-left: 1D tree node diagram ===
+    
+    # Root node
     fig.add_trace(
         go.Scatter(
-            x=[0.5, 0.2, 0.8],
-            y=[1.0, 0.0, 0.0],
+            x=[0.5],
+            y=[1.0],
             mode="markers+text",
-            text=[
-                f"Root<br>n={len(random_one_dimensional_array)}",
-                f"Left<br>n={len(split_1d_from_left)}",
-                f"Right<br>n={len(split_1d_from_right)}"
-            ],
+            text=[f"<b>Root</b><br>n={len(random_one_dimensional_array)}"],
             textposition="top center",
-            marker=dict(size=15, color=['gray', 'rgb(65, 105, 225)', 'rgb(220, 20, 60)']),
-            showlegend=False
+            textfont=dict(size=11, color='#2b2d42'),
+            marker=dict(
+                size=35,
+                color='#f8f9fa',
+                line=dict(color='#2b2d42', width=2.5),
+                symbol='circle'
+            ),
+            showlegend=False,
+            hoverinfo='skip'
         ),
         row=2, col=1
     )
+    
+    # Left child node
+    fig.add_trace(
+        go.Scatter(
+            x=[0.2],
+            y=[0.0],
+            mode="markers+text",
+            text=[f"<b>Left</b><br>n={len(split_1d_from_left)}"],
+            textposition="bottom center",
+            textfont=dict(size=10, color='rgb(65, 105, 225)'),
+            marker=dict(
+                size=30,
+                color='rgba(65, 105, 225, 0.15)',
+                line=dict(color='rgb(65, 105, 225)', width=2.5),
+                symbol='circle'
+            ),
+            showlegend=False,
+            hoverinfo='skip'
+        ),
+        row=2, col=1
+    )
+    
+    # Right child node
+    fig.add_trace(
+        go.Scatter(
+            x=[0.8],
+            y=[0.0],
+            mode="markers+text",
+            text=[f"<b>Right</b><br>n={len(split_1d_from_right)}"],
+            textposition="bottom center",
+            textfont=dict(size=10, color='rgb(220, 20, 60)'),
+            marker=dict(
+                size=30,
+                color='rgba(220, 20, 60, 0.15)',
+                line=dict(color='rgb(220, 20, 60)', width=2.5),
+                symbol='circle'
+            ),
+            showlegend=False,
+            hoverinfo='skip'
+        ),
+        row=2, col=1
+    )
+    
+    # Connecting lines with labels
     fig.add_trace(
         go.Scatter(
             x=[0.5, 0.2, None, 0.5, 0.8],
             y=[1.0, 0.0, None, 1.0, 0.0],
             mode="lines",
-            line=dict(color='gray', width=2),
-            showlegend=False
+            line=dict(color='#8d99ae', width=2.5),
+            showlegend=False,
+            hoverinfo='skip'
         ),
         row=2, col=1
     )
-    fig.update_xaxes(visible=False, row=2, col=1)
-    fig.update_yaxes(visible=False, row=2, col=1)
-
+    
+    # Add split condition annotations on the edges
+    fig.add_annotation(
+        x=0.35,
+        y=0.5,
+        text=f"x < {random_1d_point_on_axis_to_cut:.2f}",
+        showarrow=False,
+        font=dict(size=9, color='#495057', family='monospace'),
+        bgcolor='rgba(255, 255, 255, 0.9)',
+        bordercolor='#dee2e6',
+        borderwidth=1,
+        borderpad=3,
+        row=2, col=1
+    )
+    
+    fig.add_annotation(
+        x=0.65,
+        y=0.5,
+        text=f"x ≥ {random_1d_point_on_axis_to_cut:.2f}",
+        showarrow=False,
+        font=dict(size=9, color='#495057', family='monospace'),
+        bgcolor='rgba(255, 255, 255, 0.9)',
+        bordercolor='#dee2e6',
+        borderwidth=1,
+        borderpad=3,
+        row=2, col=1
+    )
+    
+    fig.update_xaxes(
+        visible=False, 
+        range=[0, 1],
+        row=2, col=1
+    )
+    fig.update_yaxes(
+        visible=False, 
+        range=[-0.3, 1.3],
+        row=2, col=1
+    )
+    
     ##################
     # Two-Dimensional
     ##################
     random_two_dimensional_array = np.random.multivariate_normal(
         mean=[0.0, 0.0],
         cov=[[1.0, 0.0], [0.0, 1.0]],
-        size=20
+        size=M
     )
 
     two_dimensional_iForest_model = IsolationForestAnomalyDetector(
@@ -407,6 +533,7 @@ def generate_single_step_random_binary_partition(n_clicks):
             name="2D Left",
             marker=dict(
                 size=12,
+                opacity=0.75,
                 color='rgb(65, 105, 225)',
                 line=dict(color='rgb(30, 60, 180)', width=1)
             ),
@@ -423,6 +550,7 @@ def generate_single_step_random_binary_partition(n_clicks):
             name="2D Right",
             marker=dict(
                 size=12,
+                opacity=0.75,
                 color='rgb(220, 20, 60)',
                 line=dict(color='rgb(180, 10, 40)', width=1)
             ),
@@ -537,37 +665,122 @@ def generate_single_step_random_binary_partition(n_clicks):
     fig.update_xaxes(title_text="x₁", row=1, col=2)
     fig.update_yaxes(title_text="x₂", row=1, col=2)
 
-    # === Bottom-right: 2D tree node diagram ===
-    axis_name = "x₁" if random_2d_axis_to_cut == 0 else "x₂"
+    # === Bottom-left: 2D tree node diagram ===
+    
+    # Root node
     fig.add_trace(
         go.Scatter(
-            x=[0.5, 0.2, 0.8],
-            y=[1.0, 0.0, 0.0],
+            x=[0.5],
+            y=[1.0],
             mode="markers+text",
-            text=[
-                f"Root (split on {axis_name})<br>n={n_left_2d + n_right_2d}",
-                f"Left<br>n={n_left_2d}",
-                f"Right<br>n={n_right_2d}"
-            ],
+            text=[f"<b>Root</b><br>n={len(random_two_dimensional_array)}"],
             textposition="top center",
-            marker=dict(size=15, color=['gray', 'rgb(65, 105, 225)', 'rgb(220, 20, 60)']),
-            showlegend=False
+            textfont=dict(size=11, color='#2b2d42'),
+            marker=dict(
+                size=35,
+                color='#f8f9fa',
+                line=dict(color='#2b2d42', width=2.5),
+                symbol='circle'
+            ),
+            showlegend=False,
+            hoverinfo='skip'
         ),
         row=2, col=2
     )
+    
+    # Left child node
+    fig.add_trace(
+        go.Scatter(
+            x=[0.2],
+            y=[0.0],
+            mode="markers+text",
+            text=[f"<b>Left</b><br>n={len(split_2d_from_left)}"],
+            textposition="bottom center",
+            textfont=dict(size=10, color='rgb(65, 105, 225)'),
+            marker=dict(
+                size=30,
+                color='rgba(65, 105, 225, 0.15)',
+                line=dict(color='rgb(65, 105, 225)', width=2.5),
+                symbol='circle'
+            ),
+            showlegend=False,
+            hoverinfo='skip'
+        ),
+        row=2, col=2
+    )
+    
+    # Right child node
+    fig.add_trace(
+        go.Scatter(
+            x=[0.8],
+            y=[0.0],
+            mode="markers+text",
+            text=[f"<b>Right</b><br>n={len(split_2d_from_right)}"],
+            textposition="bottom center",
+            textfont=dict(size=10, color='rgb(220, 20, 60)'),
+            marker=dict(
+                size=30,
+                color='rgba(220, 20, 60, 0.15)',
+                line=dict(color='rgb(220, 20, 60)', width=2.5),
+                symbol='circle'
+            ),
+            showlegend=False,
+            hoverinfo='skip'
+        ),
+        row=2, col=2
+    )
+    
+    # Connecting lines with labels
     fig.add_trace(
         go.Scatter(
             x=[0.5, 0.2, None, 0.5, 0.8],
             y=[1.0, 0.0, None, 1.0, 0.0],
             mode="lines",
-            line=dict(color='gray', width=2),
-            showlegend=False
+            line=dict(color='#8d99ae', width=2.5),
+            showlegend=False,
+            hoverinfo='skip'
         ),
         row=2, col=2
     )
-    fig.update_xaxes(visible=False, row=2, col=2)
-    fig.update_yaxes(visible=False, row=2, col=2)
-
+    
+    # Add split condition annotations on the edges
+    fig.add_annotation(
+        x=0.35,
+        y=0.5,
+        text=f"x < {random_2d_point_on_axis_to_cut:.2f}",
+        showarrow=False,
+        font=dict(size=9, color='#495057', family='monospace'),
+        bgcolor='rgba(255, 255, 255, 0.9)',
+        bordercolor='#dee2e6',
+        borderwidth=1,
+        borderpad=3,
+        row=2, col=2
+    )
+    
+    fig.add_annotation(
+        x=0.65,
+        y=0.5,
+        text=f"x ≥ {random_2d_point_on_axis_to_cut:.2f}",
+        showarrow=False,
+        font=dict(size=9, color='#495057', family='monospace'),
+        bgcolor='rgba(255, 255, 255, 0.9)',
+        bordercolor='#dee2e6',
+        borderwidth=1,
+        borderpad=3,
+        row=2, col=2
+    )
+    
+    fig.update_xaxes(
+        visible=False, 
+        range=[0, 1],
+        row=2, col=2
+    )
+    fig.update_yaxes(
+        visible=False, 
+        range=[-0.3, 1.3],
+        row=2, col=2
+    )
+    
     fig.update_layout(
         height=900,
         width=1200,
@@ -577,8 +790,8 @@ def generate_single_step_random_binary_partition(n_clicks):
             "text": "Single-Step Binary Partition (Using IsolationForestAnomalyDetector.binary_partition)",
             "x": 0.5,
             "xanchor": "center",
-            "y": 0.97,
-            "font": dict(size=20)
+            "y": 1.0,
+            "font": dict(size=15)
         },
         showlegend=False
     )
