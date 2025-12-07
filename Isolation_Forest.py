@@ -9,6 +9,10 @@ class  IsolationForestAnomalyDetector():
 
     def binary_partition(self, X=None):
 
+        # fallback to use all data if X is None
+        if X is None:
+            X = self.X
+            
         # base case: X is a single isolated point
         if len(X) <= 1:
             return (X, np.array([]).reshape(0, self.d), 0, 0)
@@ -32,7 +36,11 @@ class  IsolationForestAnomalyDetector():
         return (split_X_from_left, split_X_from_right, random_axis_to_cut, random_point_on_axis_to_cut)
         
     def iTree(self, X=None, counter=0, limit=100):
-        
+
+        # fallback to use all data if X is None
+        if X is None:
+            X = self.X
+
         # base case: all points are isolated or height limit reached
         if (len(X) <= 1) or (counter >= limit) or (np.all(X == X[0])):
             # Create external node when point is isolated
