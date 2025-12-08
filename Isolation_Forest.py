@@ -35,27 +35,27 @@ class  IsolationForestAnomalyDetector():
 
         return (S_left, S_right, q, p)
         
-    def iTree(self, X=None, counter=0, limit=100):
+    def iTree(self, S=None, c=0, l=100):
 
         # fallback to use all data if X is None
-        if X is None:
-            X = self.X
+        if S is None:
+            S = self.X
 
         # base case: all points are isolated or height limit reached
-        if (len(X) <= 1) or (counter >= limit) or (np.all(X == X[0])):
+        if (len(S) <= 1) or (c >= l) or np.all(np.isclose(S, S[0], rtol=1e-05, atol=1e-08)):
             # Create external node when point is isolated
-            return {'type': 'external', 'size': len(X)}
+            return {'type': 'external', 'size': len(S)}
         
         # Split left and right from random point on random axis
-        left_split, right_split, split_axis, split_point = self.binary_partition(X)
+        S_left, S_right, q, p = self.binary_partition(S)
 
         # Create internal node with recursive calls
         return {
             'type': 'internal',
-            'left': self.iTree(left_split, counter+1, limit),  # further split left into two, add 1 to the counter
-            'right': self.iTree(right_split, counter+1,limit), # further split right into two, add 1 to the counter
-            'split_axis': split_axis,
-            'split_point': split_point
+            'left': self.iTree(S_left, c+1, l),  # further split left into two, add 1 to the counter
+            'right': self.iTree(S_right, c+1,l), # further split right into two, add 1 to the counter
+            'split_axis': q,
+            'split_point': p
         }
 
     def expected_length_of_unsuccessful_search_in_RBST(self, length):

@@ -157,10 +157,10 @@ iTree_layout = [
                    style={'fontWeight': '600', 'marginBottom': '6px', 'display': 'block'}
                ),
                dcc.Slider(
-                   0, 520, 10,
-                   value=20,
+                   0, 10, 1,
+                   value=5,
                    id='itree-number-of-points-slider',
-                   marks={0: '0', 252: '252', 520: '520'},
+                   marks={0: '0', 10: '10'},
                    tooltip={"always_visible": False},
                )
            ], style={'flex': '1.2', 'marginRight': '20px'}),
@@ -185,7 +185,7 @@ iTree_layout = [
            # --- Expand tree button ---
            html.Div([
                html.Button(
-                   "Expand Tree One Level",
+                   "Run Binary Partition By One-Step",
                    id='itree-expand-tree-button',
                    n_clicks=0,
                    style={
@@ -242,7 +242,7 @@ iTree_layout = [
 
     html.Div([
         dcc.Link(
-            '← Go to Overview / Intro',
+            'Go to Overview / Intro',
             href='/intro',
             style={
                 'color': '#2b2d42',
@@ -260,7 +260,7 @@ iTree_layout = [
         ),
 
         dcc.Link(
-            'Go to iTrees →',
+            'Go to iTrees',
             href='/itrees',
             style={
                 'color': '#2b2d42',
@@ -283,6 +283,7 @@ iTree_layout = [
         'padding': '20px 0'
     })
 ]
+
 
 @callback(
     Output('itree-scatter-plot', 'figure'),
@@ -309,18 +310,12 @@ def update_itree_fig(
     ctx = callback_context
     triggered_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
 
-    # ------------------------------------------------------------------
-    # Restore stored values
-    # ------------------------------------------------------------------
     X = None
     if isinstance(stored_X, list):
         X = np.array(stored_X)
     tree = stored_tree
     depth = stored_depth if stored_depth is not None else 0
-
-    # ------------------------------------------------------------------
-    # Helper: maximum depth of an iTree
-    # ------------------------------------------------------------------
+    
     def get_max_depth(node):
         if not isinstance(node, dict):
             return 0
@@ -328,17 +323,16 @@ def update_itree_fig(
             return 0
         return 1 + max(get_max_depth(node.get('left')), get_max_depth(node.get('right')))
 
-    # ------------------------------------------------------------------
-    # Helper: build a fresh dataset + full iTree
-    # ------------------------------------------------------------------
-    def build_new_data_and_tree(M, dim_mode):
-        if M is None:
+    def build_new_data_and_tree(M_val, dim_mode_val):
+        if M_val is None:
             M_local = 20
         else:
-            M_local = int(M)
+            M_local = int(M_val)
 
-        if dim_mode == '1d':
-            X_local = np.random.normal(loc=0.0, scale=1.0, size=M_local).reshape(-1, 1)
+        if dim_mode_val == '1d':
+            X_local = np.random.normal(
+                loc=0.0, scale=1.0, size=M_local
+            ).reshape(-1, 1)
         else:  # '2d'
             X_local = np.random.multivariate_normal(
                 mean=[0.0, 0.0],
@@ -348,130 +342,566 @@ def update_itree_fig(
 
         model = IsolationForestAnomalyDetector(X_local)
 
-        # Reasonable max depth: ~ ceil(log2(n)) + 1, with a fallback
-        if M_local > 1:
-            limit = int(np.ceil(np.log2(M_local))) + 1
-        else:
-            limit = 1
-
-        full_tree = model.iTree(S=None, c=0, l=limit)
+        height_limit = 10
+        full_tree = model.iTree(S=None, c=0, l=height_limit)
         return X_local, full_tree
 
-    # ------------------------------------------------------------------
-    # Decide what triggered the callback
-    # ------------------------------------------------------------------
+    # Always make sure we have data and a tree before reacting to buttons
+    if X is None or tree is None:
+        X, tree = build_new_data_and_tree(M, dim_mode)
+        if stored_depth is None:
+            depth = 0
+
     if triggered_id in ['itree-generate-data-button',
                         'itree-number-of-points-slider',
                         'itree-dimension-toggle']:
-        # Fresh data and tree; reset depth
+
         X, tree = build_new_data_and_tree(M, dim_mode)
         depth = 0
 
     elif triggered_id == 'itree-expand-tree-button' and tree is not None:
-        # Step-wise reveal: increase depth (up to max depth)
         max_depth = get_max_depth(tree)
         if depth < max_depth:
             depth += 1
 
-    # Initial load fallback (no trigger / no data yet)
-    if X is None:
-        X, tree = build_new_data_and_tree(M, dim_mode)
-        depth = 0
-
-    # Storeable version of X
     X_list = X.tolist() if X is not None else []
 
-    # ------------------------------------------------------------------
-    # Helper: collect splits up to a given depth
-    # Each split is stored with its region bounds to draw lines correctly
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------
+    # Helper: collect splits (axis-aligned) up to a given depth
+    # (for drawing all partition lines)
+    # ---------------------------------------------------------
     def collect_splits(itree, depth_limit, bounds, current_depth=1, splits=None):
-        """
-        bounds = (xmin, xmax, ymin, ymax)
-        """
         if splits is None:
             splits = []
 
-        if itree is None or not isinstance(itree, dict):
-            return splits
-
-        if itree.get('type') == 'external':
-            return splits
-
-        if current_depth > depth_limit:
+        # Early exit conditions
+        if (itree is None or 
+            not isinstance(itree, dict) or 
+            itree.get('type') == 'external' or 
+            current_depth > depth_limit):
             return splits
 
         q = itree['split_axis']
         p = itree['split_point']
         xmin, xmax, ymin, ymax = bounds
 
-        # Record this split
-        splits.append({'axis': q, 'point': p, 'bounds': bounds})
+        splits.append({'axis': q, 'point': p, 'bounds': bounds, 'depth': current_depth})
 
-        # Child bounds
-        if q == 0:
-            left_bounds = (xmin, p, ymin, ymax)
-            right_bounds = (p, xmax, ymin, ymax)
-        else:
-            left_bounds = (xmin, xmax, ymin, p)
-            right_bounds = (xmin, xmax, p, ymax)
+        # Only recurse if we haven't hit depth limit
+        if current_depth < depth_limit:
+            if q == 0:
+                left_bounds = (xmin, p, ymin, ymax)
+                right_bounds = (p, xmax, ymin, ymax)
+            else:
+                left_bounds = (xmin, xmax, ymin, p)
+                right_bounds = (xmin, xmax, p, ymax)
 
-        # Recurse on children
-        collect_splits(itree['left'], depth_limit, left_bounds, current_depth + 1, splits)
-        collect_splits(itree['right'], depth_limit, right_bounds, current_depth + 1, splits)
+            collect_splits(itree['left'], depth_limit, left_bounds, current_depth + 1, splits)
+            collect_splits(itree['right'], depth_limit, right_bounds, current_depth + 1, splits)
 
         return splits
 
-    # ------------------------------------------------------------------
-    # Build figure
-    # ------------------------------------------------------------------
-    if X is None or len(X) == 0:
-        fig = go.Figure()
-        fig.update_layout(
-            title="No data – adjust the number of points or generate data",
-            template="simple_white"
-        )
-        return fig, X_list, tree, depth
+    def collect_depth_splits(itree, X_data, depth_target):
+        if (itree is None or 
+            not isinstance(itree, dict) or 
+            depth_target <= 0):
+            return []
 
+        N = X_data.shape[0]
+        indices_all = np.arange(N)
+        result = []
+
+        def _rec(node, idx, depth_cur):
+            if (node is None or 
+                not isinstance(node, dict) or 
+                node.get('type') == 'external' or
+                len(idx) == 0):
+                return
+
+            q = node['split_axis']
+            p = node['split_point']
+
+            # Vectorized comparison
+            vals = X_data[idx, q]
+            left_mask = vals < p
+            left_idx = idx[left_mask]
+            right_idx = idx[~left_mask]
+
+            if depth_cur == depth_target:
+                result.append({
+                    'left_idx': left_idx,
+                    'right_idx': right_idx,
+                    'axis': q,
+                    'point': p
+                })
+                return
+
+            # Only recurse if needed
+            if depth_cur < depth_target:
+                _rec(node['left'], left_idx, depth_cur + 1)
+                _rec(node['right'], right_idx, depth_cur + 1)
+
+        _rec(itree, indices_all, 1)
+        return result
+
+    def build_tree_traces(itree, X_data, depth_limit):
+        """
+        Build a clean, breathing-room binary tree similar in style to the
+        bottom-right node diagram in `binary_partition_page.py`.
+        """
+        if (
+            itree is None
+            or X_data is None
+            or len(X_data) == 0
+            or depth_limit <= 0
+        ):
+            return []
+
+        N = X_data.shape[0]
+        mask_all = np.ones(N, dtype=bool)
+
+        # Lists for three node types (root, left, right)
+        root_x, root_y, root_text, root_size = [], [], [], []
+        left_x, left_y, left_text, left_size = [], [], [], []
+        right_x, right_y, right_text, right_size = [], [], [], []
+
+        edge_x, edge_y = [], []
+
+        # Vertical spacing: make use of the full height with nice gaps
+        effective_depth = max(depth_limit, 1)
+        dy = 0.8 / effective_depth   # total vertical span ~0.8
+        dx0 = 0.32                  # initial horizontal half-width
+
+        def traverse(node, mask, depth_cur, x, y, dx, role):
+            # Early exits
+            if (
+                node is None
+                or not isinstance(node, dict)
+                or depth_cur > depth_limit
+            ):
+                return
+
+            size_here = int(mask.sum())
+            if size_here == 0:
+                return
+
+            # Compact labels but in the "Root / Left / Right" spirit
+            if role == "root":
+                text = f"<b>Root</b><br>n={size_here}"
+            elif role == "left":
+                text = f"<b>L</b><br>n={size_here}"
+            else:
+                text = f"<b>R</b><br>n={size_here}"
+
+            # Node marker size scales with subset size but stays readable
+            base_size = 36
+            rel_size = size_here / max(N, 1)
+            depth_factor = max(0.6, 1.0 - 0.08 * (depth_cur - 1))
+            marker_size = base_size * rel_size * depth_factor
+            marker_size = max(18, min(42, marker_size))
+
+            if role == "root":
+                root_x.append(x)
+                root_y.append(y)
+                root_text.append(text)
+                root_size.append(marker_size)
+            elif role == "left":
+                left_x.append(x)
+                left_y.append(y)
+                left_text.append(text)
+                left_size.append(marker_size)
+            else:  # "right"
+                right_x.append(x)
+                right_y.append(y)
+                right_text.append(text)
+                right_size.append(marker_size)
+
+            # Stop if external node or we've reached the visible depth
+            if node.get("type") == "external" or depth_cur >= depth_limit:
+                return
+
+            # Internal node -> split further
+            q = node["split_axis"]
+            p = node["split_point"]
+
+            vals = X_data[:, q]
+            left_mask = mask & (vals < p)
+            right_mask = mask & (~(vals < p))
+
+            if not (left_mask.any() or right_mask.any()):
+                return
+
+            # Children positions: gently fanned out
+            child_y = y - dy
+            child_dx = dx / 2.0
+
+            # Left child
+            if left_mask.any():
+                x_left = x - child_dx
+                edge_x.extend([x, x_left, None])
+                edge_y.extend([y, child_y, None])
+                traverse(
+                    node["left"],
+                    left_mask,
+                    depth_cur + 1,
+                    x_left,
+                    child_y,
+                    child_dx,
+                    "left",
+                )
+
+            # Right child
+            if right_mask.any():
+                x_right = x + child_dx
+                edge_x.extend([x, x_right, None])
+                edge_y.extend([y, child_y, None])
+                traverse(
+                    node["right"],
+                    right_mask,
+                    depth_cur + 1,
+                    x_right,
+                    child_y,
+                    child_dx,
+                    "right",
+                )
+
+        # Kick off recursion from root (top center)
+        traverse(itree, mask_all, depth_cur=1, x=0.5, y=1.05, dx=dx0, role="root")
+
+        traces = []
+
+        # Edges (soft grey, slightly thicker for comfort)
+        if edge_x:
+            traces.append(
+                go.Scatter(
+                    x=edge_x,
+                    y=edge_y,
+                    mode="lines",
+                    line=dict(color="#adb5bd", width=2.2),
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
+
+        # Root node
+        if root_x:
+            traces.append(
+                go.Scatter(
+                    x=root_x,
+                    y=root_y,
+                    mode="markers+text",
+                    text=root_text,
+                    textposition="top center",
+                    textfont=dict(size=11, color="#2b2d42"),
+                    marker=dict(
+                        size=root_size,
+                        color="#f8f9fa",
+                        line=dict(color="#2b2d42", width=2.5),
+                        symbol="circle",
+                    ),
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
+
+        # Left nodes (blue-ish)
+        if left_x:
+            traces.append(
+                go.Scatter(
+                    x=left_x,
+                    y=left_y,
+                    mode="markers+text",
+                    text=left_text,
+                    textposition="bottom center",
+                    textfont=dict(size=9, color="rgb(65, 105, 225)"),
+                    marker=dict(
+                        size=left_size,
+                        color="rgba(65, 105, 225, 0.15)",
+                        line=dict(color="rgb(65, 105, 225)", width=2.5),
+                        symbol="circle",
+                    ),
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
+
+        # Right nodes (red-ish)
+        if right_x:
+            traces.append(
+                go.Scatter(
+                    x=right_x,
+                    y=right_y,
+                    mode="markers+text",
+                    text=right_text,
+                    textposition="bottom center",
+                    textfont=dict(size=9, color="rgb(220, 20, 60)"),
+                    marker=dict(
+                        size=right_size,
+                        color="rgba(220, 20, 60, 0.15)",
+                        line=dict(color="rgb(220, 20, 60)", width=2.5),
+                        symbol="circle",
+                    ),
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
+
+        return traces
+
+    def add_split_annotations(fig, itree, X_data, depth_limit, dim_mode):
+        """
+        Add 'x < p' / 'x ≥ p' (or x₁/x₂) labels on *all* visible edges
+        up to depth_limit, mirroring the layout in build_tree_traces.
+        """
+        if (
+            itree is None
+            or X_data is None
+            or len(X_data) == 0
+            or depth_limit <= 0
+            or not isinstance(itree, dict)
+        ):
+            return
+
+        N = X_data.shape[0]
+        mask_all = np.ones(N, dtype=bool)
+
+        effective_depth = max(depth_limit, 1)
+        dy = 0.8 / effective_depth
+        dx0 = 0.32
+
+        def traverse(node, mask, depth_cur, x, y, dx):
+            if (
+                node is None
+                or not isinstance(node, dict)
+                or depth_cur > depth_limit
+            ):
+                return
+
+            size_here = int(mask.sum())
+            if size_here == 0:
+                return
+
+            # Stop if external node or we've reached the visible depth
+            if node.get("type") == "external" or depth_cur >= depth_limit:
+                return
+
+            # Internal node
+            q = node["split_axis"]
+            p = node["split_point"]
+
+            vals = X_data[:, q]
+            left_mask = mask & (vals < p)
+            right_mask = mask & (~(vals < p))
+
+            if not (left_mask.any() or right_mask.any()):
+                return
+
+            child_y = y - dy
+            child_dx = dx / 2.0
+
+            # label text
+            if dim_mode == "1d":
+                coord_label = "x"
+            else:
+                coord_label = "x₁" if q == 0 else "x₂"
+
+            # ----- Left edge label -----
+            if left_mask.any():
+                x_left = x - child_dx
+                x_mid_left = 0.5 * (x + x_left)
+                y_mid = 0.5 * (y + child_y)
+
+                fig.add_annotation(
+                    x=x_mid_left,
+                    y=y_mid,
+                    text=f"{coord_label} < {p:.2f}",
+                    showarrow=False,
+                    font=dict(size=9, color="#495057", family="monospace"),
+                    bgcolor="rgba(255, 255, 255, 0.9)",
+                    bordercolor="#dee2e6",
+                    borderwidth=1,
+                    borderpad=3,
+                    xref="x2",
+                    yref="y2",
+                    row=1, col=2,
+                )
+
+                traverse(
+                    node["left"],
+                    left_mask,
+                    depth_cur + 1,
+                    x_left,
+                    child_y,
+                    child_dx,
+                )
+
+            # ----- Right edge label -----
+            if right_mask.any():
+                x_right = x + child_dx
+                x_mid_right = 0.5 * (x + x_right)
+                y_mid = 0.5 * (y + child_y)
+
+                fig.add_annotation(
+                    x=x_mid_right,
+                    y=y_mid,
+                    text=f"{coord_label} ≥ {p:.2f}",
+                    showarrow=False,
+                    font=dict(size=9, color="#495057", family="monospace"),
+                    bgcolor="rgba(255, 255, 255, 0.9)",
+                    bordercolor="#dee2e6",
+                    borderwidth=1,
+                    borderpad=3,
+                    xref="x2",
+                    yref="y2",
+                    row=1, col=2,
+                )
+
+                traverse(
+                    node["right"],
+                    right_mask,
+                    depth_cur + 1,
+                    x_right,
+                    child_y,
+                    child_dx,
+                )
+
+        # start from the root at (0.5, 1.05) with dx0
+        traverse(itree, mask_all, depth_cur=1, x=0.5, y=1.05, dx=dx0)
+
+    # ---------------------------------------------------------
+    # Build 1×2 subplot: (1) data space, (2) binary tree
+    # ---------------------------------------------------------
+    fig = make_subplots(
+        rows=1, cols=2,
+        column_widths=[0.6, 0.4],
+        subplot_titles=(
+            "",
+            ""
+        ),
+        horizontal_spacing=0.08
+    )
+
+    # ===== Left subplot: data space with step-wise highlighting =====
     if dim_mode == '1d':
         x_vals = X[:, 0]
         x_min = float(x_vals.min())
         x_max = float(x_vals.max())
-        y_min, y_max = -0.5, 0.5
+        y_min, y_max = -0.3, 0.3
 
-        # Basic scatter of points along x-axis
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=x_vals,
-                y=np.zeros_like(x_vals),
-                mode='markers',
-                name='Data'
+        # padding for aesthetics
+        pad_x = 0.08 * (x_max - x_min if x_max > x_min else 1.0)
+        x_min -= pad_x
+        x_max += pad_x
+
+        # Step-wise coloring:
+        # depth == 0 -> all grey; depth >= 1 -> highlight nodes at that depth
+        if depth <= 0 or tree is None or not isinstance(tree, dict):
+            # neutral scatter
+            fig.add_trace(
+                go.Scatter(
+                    x=x_vals,
+                    y=np.zeros_like(x_vals),
+                    mode='markers',
+                    name='Data',
+                    marker=dict(
+                        size=8,
+                        opacity=0.85,
+                        color='rgb(120, 120, 120)',
+                        line=dict(color='rgb(60, 60, 60)', width=0.8)
+                    )
+                ),
+                row=1, col=1
             )
-        )
+        else:
+            depth_splits = collect_depth_splits(tree, X, depth_target=depth)
 
-        # Draw splits up to current depth (vertical lines)
+            # After getting depth_splits, compute masks ONCE
+            N = len(x_vals)
+            mask_left_union = np.zeros(N, dtype=bool)
+            mask_right_union = np.zeros(N, dtype=bool)
+
+            for s in depth_splits:
+                mask_left_union[s['left_idx']] = True
+                mask_right_union[s['right_idx']] = True
+
+            mask_neutral = ~(mask_left_union | mask_right_union)
+
+            # neutral / already-split points (other depths)
+            if mask_neutral.any():
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_vals[mask_neutral],
+                        y=np.zeros(mask_neutral.sum()),
+                        mode='markers',
+                        name='Previous levels',
+                        marker=dict(
+                            size=6,
+                            opacity=0.8,
+                            color='black',
+                            line=dict(color='rgb(140, 140, 140)', width=0.5)
+                        )
+                    ),
+                    row=1, col=1
+                )
+
+            # current depth: left (blue)
+            if mask_left_union.any():
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_vals[mask_left_union],
+                        y=np.zeros(mask_left_union.sum()),
+                        mode='markers',
+                        name='Left split (current depth)',
+                        marker=dict(
+                            size=10,
+                            opacity=0.9,
+                            color='rgb(65, 105, 225)',
+                            line=dict(color='rgb(30, 60, 180)', width=1)
+                        )
+                    ),
+                    row=1, col=1
+                )
+
+            # current depth: right (red)
+            if mask_right_union.any():
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_vals[mask_right_union],
+                        y=np.zeros(mask_right_union.sum()),
+                        mode='markers',
+                        name='Right split (current depth)',
+                        marker=dict(
+                            size=10,
+                            opacity=0.9,
+                            color='rgb(220, 20, 60)',
+                            line=dict(color='rgb(180, 10, 40)', width=1)
+                        )
+                    ),
+                    row=1, col=1
+                )
+
+        # Draw partition lines for all depths up to current depth
         if tree is not None and depth > 0:
-            splits = collect_splits(
+            splits_all = collect_splits(
                 tree,
                 depth_limit=depth,
                 bounds=(x_min, x_max, y_min, y_max)
             )
-            for s in splits:
+            for s in splits_all:
                 p = s['point']
+                # subtle: shallower depth = slightly bolder line
+                w = 1.5 if s['depth'] == 1 else 1.0
+                dash = "dash" if s['depth'] == depth else "dot"
                 fig.add_vline(
                     x=p,
-                    line_dash="dash",
-                    line_width=1
+                    line_dash=dash,
+                    line_color="#888888",
+                    line_width=w,
+                    row=1, col=1
                 )
 
-        fig.update_yaxes(visible=False, range=[y_min, y_max])
-        fig.update_layout(
-            title=f"Isolation Tree (1D) – showing splits up to depth {depth}",
-            xaxis_title="x",
-            template="simple_white",
-            showlegend=False
-        )
+        fig.update_yaxes(visible=False, range=[y_min, y_max], row=1, col=1)
+        fig.update_xaxes(title_text="x", range=[x_min, x_max], row=1, col=1)
 
     else:  # '2d'
         x_vals = X[:, 0]
@@ -482,7 +912,7 @@ def update_itree_fig(
         y_min = float(y_vals.min())
         y_max = float(y_vals.max())
 
-        # Add a bit of padding so lines don't touch the border
+        # padding
         pad_x = 0.1 * (x_max - x_min if x_max > x_min else 1.0)
         pad_y = 0.1 * (y_max - y_min if y_max > y_min else 1.0)
         x_min -= pad_x
@@ -490,53 +920,159 @@ def update_itree_fig(
         y_min -= pad_y
         y_max += pad_y
 
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=x_vals,
-                y=y_vals,
-                mode='markers',
-                name='Data'
+        if depth <= 0 or tree is None or not isinstance(tree, dict):
+            # neutral scatter
+            fig.add_trace(
+                go.Scatter(
+                    x=x_vals,
+                    y=y_vals,
+                    mode='markers',
+                    name='Data',
+                    marker=dict(
+                        size=8,
+                        opacity=0.85,
+                        color='rgb(120, 120, 120)',
+                        line=dict(color='rgb(60, 60, 60)', width=0.8)
+                    )
+                ),
+                row=1, col=1
             )
-        )
+        else:
+            depth_splits = collect_depth_splits(tree, X, depth_target=depth)
 
-        # Draw axis-aligned splits up to current depth
+            # After getting depth_splits, compute masks ONCE
+            N = len(x_vals)
+            mask_left_union = np.zeros(N, dtype=bool)
+            mask_right_union = np.zeros(N, dtype=bool)
+
+            for s in depth_splits:
+                mask_left_union[s['left_idx']] = True
+                mask_right_union[s['right_idx']] = True
+
+            mask_neutral = ~(mask_left_union | mask_right_union)
+
+            # neutral (other depths)
+            if mask_neutral.any():
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_vals[mask_neutral],
+                        y=y_vals[mask_neutral],
+                        mode='markers',
+                        name='Previous levels',
+                        marker=dict(
+                            size=6,
+                            opacity=0.8,
+                            color='black',
+                            line=dict(color='rgb(140, 140, 140)', width=0.5)
+                        )
+                    ),
+                    row=1, col=1
+                )
+
+            # current left
+            if mask_left_union.any():
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_vals[mask_left_union],
+                        y=y_vals[mask_left_union],
+                        mode='markers',
+                        name='Left split (current depth)',
+                        marker=dict(
+                            size=10,
+                            opacity=0.9,
+                            color='rgb(65, 105, 225)',
+                            line=dict(color='rgb(30, 60, 180)', width=1)
+                        )
+                    ),
+                    row=1, col=1
+                )
+
+            # current right
+            if mask_right_union.any():
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_vals[mask_right_union],
+                        y=y_vals[mask_right_union],
+                        mode='markers',
+                        name='Right split (current depth)',
+                        marker=dict(
+                            size=10,
+                            opacity=0.9,
+                            color='rgb(220, 20, 60)',
+                            line=dict(color='rgb(180, 10, 40)', width=1)
+                        )
+                    ),
+                    row=1, col=1
+                )
+
+        # Draw partition lines (all depths up to current)
         if tree is not None and depth > 0:
-            splits = collect_splits(
+            splits_all = collect_splits(
                 tree,
                 depth_limit=depth,
                 bounds=(x_min, x_max, y_min, y_max)
             )
-            for s in splits:
+            for s in splits_all:
                 q = s['axis']
                 p = s['point']
                 bx_min, bx_max, by_min, by_max = s['bounds']
 
+                w = 1.8 if s['depth'] == 1 else 1.0
+                dash = "dash" if s['depth'] == depth else "dot"
+
                 if q == 0:
-                    # Vertical line
                     fig.add_shape(
                         type="line",
                         x0=p, x1=p,
                         y0=by_min, y1=by_max,
-                        line=dict(dash="dash", width=1)
+                        line=dict(dash=dash, width=w, color="#777777"),
+                        row=1, col=1
                     )
                 else:
-                    # Horizontal line
                     fig.add_shape(
                         type="line",
                         x0=bx_min, x1=bx_max,
                         y0=p, y1=p,
-                        line=dict(dash="dash", width=1)
+                        line=dict(dash=dash, width=w, color="#777777"),
+                        row=1, col=1
                     )
 
-        fig.update_xaxes(range=[x_min, x_max])
-        fig.update_yaxes(range=[y_min, y_max])
-        fig.update_layout(
-            title=f"Isolation Tree (2D) – showing splits up to depth {depth}",
-            xaxis_title="x₁",
-            yaxis_title="x₂",
-            template="simple_white",
-            showlegend=False
-        )
+        fig.update_xaxes(title_text="x₁", range=[x_min, x_max], row=1, col=1)
+        fig.update_yaxes(title_text="x₂", range=[y_min, y_max], row=1, col=1)
+
+    # ===== Right subplot: binary tree (node graph) =====
+    # depth = "how many splits we've revealed"
+    # tree_depth_limit = depth + 1 so that:
+    #   depth = 1 -> root + its children
+    #   depth = 2 -> root + children + grandchildren, etc.
+    tree_depth_limit = depth + 1 if depth > 0 else 1
+
+    tree_traces = build_tree_traces(tree, X, depth_limit=tree_depth_limit)
+    for tr in tree_traces:
+        fig.add_trace(tr, row=1, col=2)
+
+    # -------------------------------------------------
+    # Add split condition annotations on *all* visible splits
+    # -------------------------------------------------
+    if isinstance(tree, dict) and depth >= 1:
+        add_split_annotations(fig, tree, X, tree_depth_limit, dim_mode)
+    
+    fig.update_xaxes(visible=True, row=1, col=1)
+    fig.update_yaxes(visible=True, row=1, col=1)
+
+    fig.update_xaxes(visible=False, row=1, col=2)
+    fig.update_yaxes(visible=False, row=1, col=2)
+
+    fig.update_layout(
+        height=700,
+        width=1300,
+        margin=dict(l=40, r=40, t=80, b=50),
+        template="simple_white",
+        title={
+            "text": f"Isolation Tree – step-wise splits up to depth {depth}",
+            "x": 0.5,
+            "xanchor": "center"
+        }
+    )
 
     return fig, X_list, tree, depth
