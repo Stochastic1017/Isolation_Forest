@@ -243,7 +243,7 @@ iTree_layout = [
     html.Div([
         dcc.Link(
             'Go to Overview / Intro',
-            href='/intro',
+            href='/error404',
             style={
                 'color': '#2b2d42',
                 'fontSize': '18px',
@@ -260,8 +260,8 @@ iTree_layout = [
         ),
 
         dcc.Link(
-            'Go to iTrees',
-            href='/itrees',
+            'Go to Path Length',
+            href='/path_length',
             style={
                 'color': '#2b2d42',
                 'fontSize': '18px',
@@ -649,10 +649,6 @@ def update_itree_fig(
         return traces
 
     def add_split_annotations(fig, itree, X_data, depth_limit, dim_mode):
-        """
-        Add 'x < p' / 'x ≥ p' (or x₁/x₂) labels on *all* visible edges
-        up to depth_limit, mirroring the layout in build_tree_traces.
-        """
         if (
             itree is None
             or X_data is None

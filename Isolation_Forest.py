@@ -58,41 +58,42 @@ class  IsolationForestAnomalyDetector():
             'split_point': p
         }
 
-    def expected_length_of_unsuccessful_search_in_RBST(self, length):
+    def expected_length_of_unsuccessful_search_in_RBST(self, s):
 
-        # trivial case
-        if length <= 1:
+        # trivial case: point is fully isolated. 
+        if s <= 1:
             return 0.0
 
-        # base case: tree of size 2, return length 1.0
-        if length == 2:
+        # trivial case: external node has two points
+        # one additional binary partition will yield isolated points
+        if s == 2:
             return 1.0
 
-        # Approximation of harmonic series 1 + 1/2 + 1/3 + ... + 1/(length-1)
-        H = np.log(length-1) + np.euler_gamma
+        # Approximation of harmonic series 1 + 1/2 + 1/3 + ... + 1/(s-1)
+        H = np.log(s-1) + np.euler_gamma
 
         # RBST expected path in unsuccessful search formula
         # Refer: The Art of Computer Programming (Volume 3) - Donald Knuth
-        return 2 * (H - (1 - 1/length))
+        return 2 * (H - (1 - 1/s))
 
-    def path_length_by_point(self, point, iTree, current_length=0):
+    def path_length_by_point(self, point, iChild, current_length=0):
 
         # base case: if node is external, compute final path length
-        if iTree['type'] == 'external':
-            return current_length + self.expected_length_of_unsuccessful_search_in_RBST(iTree['size'])
+        if iChild['type'] == 'external':
+            return current_length + self.expected_length_of_unsuccessful_search_in_RBST(iChild['size'])
 
         else:
             # Fetch the axis and point of split for this internal node
-            split_axis = iTree['split_axis']
-            split_point = iTree['split_point']
+            split_axis = iChild['split_axis']
+            split_point = iChild['split_point']
 
             # Go left if point is on the left-side of the split
             if point[split_axis] < split_point:
-                return self.path_length_by_point(point, iTree['left'], current_length+1)
+                return self.path_length_by_point(point, iChild['left'], current_length+1)
 
             # Go right if point is on the right-side of the split
             else:
-                return self.path_length_by_point(point, iTree['right'], current_length+1)
+                return self.path_length_by_point(point, iChild['right'], current_length+1)
 
     def iForest(self):
 

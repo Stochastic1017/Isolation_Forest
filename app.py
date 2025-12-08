@@ -7,6 +7,7 @@ from dash import Dash, html, dcc
 from dash.dependencies import Input, Output
 from binary_partition_page import binary_partition_layout
 from iTree_page import iTree_layout
+from path_length_page import path_length_layout
 
 app = Dash(__name__, 
            suppress_callback_exceptions=True, 
@@ -24,10 +25,15 @@ def display_page(pathname):
     # Binary Partition Page
     if pathname in ['/', '/binary_partition']:
         return binary_partition_layout
-    #
+
+    # iTree Page
     elif pathname in ['/', '/itrees']:
         return iTree_layout
 
+    # Path Length Page
+    elif pathname in ['/', '/path_length']:
+        return path_length_layout
+    
     else:
         # Fallback (404)
         return html.H1("Page not found")
