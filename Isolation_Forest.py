@@ -7,33 +7,33 @@ class  IsolationForestAnomalyDetector():
         self.X = X
         self.M, self.d = self.X.shape
 
-    def binary_partition(self, X=None):
+    def binary_partition(self, S=None):
 
         # fallback to use all data if X is None
-        if X is None:
-            X = self.X
+        if S is None:
+            S = self.X
             
         # base case: X is a single isolated point
-        if len(X) <= 1:
-            return (X, np.array([]).reshape(0, self.d), 0, 0)
+        if len(S) <= 1:
+            return (S, np.array([]).reshape(0, self.d), 0, 0)
         
         # Choose a random axis from {0, ..., d-1} on which to cut
         # Discrete uniform distribution, i.e., P(X=i) = 1/d for all i
-        random_axis_to_cut = np.random.randint(low=0, high=self.d)
+        q = np.random.randint(low=0, high=self.d)
 
         # Access the chosen axis (column) chosen above
-        X_d = X[:, random_axis_to_cut]
+        S_q = S[:, q]
 
         # Choose a random pointon chosen axis (column) from the respective (min, max)
-        # Continuous uniform distribution, i.e., P(X <= x) = 1/(max-min) for all x : min <= x <= max
-        random_point_on_axis_to_cut = np.random.uniform(low=X_d.min(), high=X_d.max())
+        # Continuous uniform distribution, i.e., P(a <= X <= b) = (b-a)/(max-min)
+        p = np.random.uniform(low=S_q.min(), high=S_q.max())
 
-        # Apply condition to split points (rows of X) from left and right of random cut
-        split_condition = X_d < random_point_on_axis_to_cut
-        split_X_from_left = X[np.where(split_condition)[0]]   # Split X where condition is TRUE (i.e., left)
-        split_X_from_right = X[np.where(~split_condition)[0]] # Split X where condition is FALSE (i.e., right)
+        # Apply condition to split points (rows of S) from left and right of random cut
+        split_condition = S_q < p
+        S_left = S[np.where(split_condition)[0]]   # Split S where condition is TRUE (i.e., left)
+        S_right = S[np.where(~split_condition)[0]] # Split S where condition is FALSE (i.e., right)
 
-        return (split_X_from_left, split_X_from_right, random_axis_to_cut, random_point_on_axis_to_cut)
+        return (S_left, S_right, q, p)
         
     def iTree(self, X=None, counter=0, limit=100):
 
