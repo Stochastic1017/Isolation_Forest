@@ -576,7 +576,7 @@ def build_figure(X, tree, selected_index=None):
 
     fig.update_xaxes(showticklabels=False, row=1, col=2)
     fig.update_yaxes(showticklabels=False, row=1, col=2)
-    fig.update_layout(margin=dict(l=10, r=10, t=40, b=10), template='simple_white')
+    fig.update_layout(margin=dict(l=10, r=10, t=40, b=10), template='simple_white', showlegend=False)
 
     return fig
 
