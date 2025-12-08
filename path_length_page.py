@@ -301,6 +301,39 @@ path_length_layout = [
 
 # ---------- Helpers ----------
 
+def assign_leaf_indices(tree, X):
+    """
+    For each external node in the tree, attach a list of data-point indices
+    that end up in that leaf: node['indices'] = [i0, i1, ...].
+    """
+    if tree is None:
+        return
+
+    # Clear any existing indices
+    def clear_indices(node):
+        if node['type'] == 'external':
+            node['indices'] = []
+        else:
+            clear_indices(node['left'])
+            clear_indices(node['right'])
+
+    clear_indices(tree)
+
+    X_arr = np.array(X)
+
+    # Push each point down the tree and record the leaf it lands in
+    for i, point in enumerate(X_arr):
+        node = tree
+        while node['type'] == 'internal':
+            q = node['split_axis']
+            p = node['split_point']
+            if point[q] < p:
+                node = node['left']
+            else:
+                node = node['right']
+        # External node
+        node.setdefault('indices', []).append(i)
+
 def build_random_data(num_points, dim):
     """
     Generate random 1D or 2D data and a single iTree over that data.
@@ -335,6 +368,10 @@ def build_random_data(num_points, dim):
 
     detector = IsolationForestAnomalyDetector(X)
     tree = detector.iTree()   # single isolation tree
+
+    # NEW: annotate leaves with which data-point indices they contain
+    assign_leaf_indices(tree, X)
+
     return X, tree
 
 def assign_tree_layout(tree):
@@ -593,7 +630,7 @@ def update_itree(
 
         depth_info = depth(tree) if tree is not None else 0
         fig = build_figure(X, tree, selected_index=None)
-        message = "Click a point in the scatter plot to see its path length."
+        message = "Click a data point or an external node to see its path length."
 
         return (
             X.tolist(),
@@ -605,7 +642,7 @@ def update_itree(
         )
 
     # ----------------------------------------------
-    # Case 1: user clicked on a point in the scatter
+    # Case 1: user clicked somewhere on the figure
     # ----------------------------------------------
     elif trigger == 'path-length-scatter-plot':
         if stored_X is None or stored_tree is None or click_data is None:
@@ -620,21 +657,76 @@ def update_itree(
 
         X = np.array(stored_X)
         tree = stored_tree
-
-        # --- Robust selection: 1D uses nearest x, 2D keeps pointIndex ---
-        dim = X.shape[1]
         click_point = click_data['points'][0]
 
-        if dim == 1:
-            # 1D: use the x-coordinate from the click and find nearest point in X
-            x_clicked = click_point['x']
-            selected_index = int(np.argmin(np.abs(X[:, 0] - x_clicked)))
-        else:
-            # 2D: pointIndex is reliable here
-            selected_index = int(click_point['pointIndex'])
+        # Determine which trace was clicked
+        curve = click_point['curveNumber']
 
-        # extra safety, in case anything weird happens
-        if selected_index < 0 or selected_index >= len(X):
+        # ----------------------------------------------------
+        # Case A: click on data point in the scatter subplot
+        # trace 0 = points, trace 1 = selected point
+        # ----------------------------------------------------
+        if curve == 0 or curve == 1:
+            dim = X.shape[1]
+
+            if dim == 1:
+                # 1D: nearest x
+                x_clicked = click_point['x']
+                selected_index = int(np.argmin(np.abs(X[:, 0] - x_clicked)))
+            else:
+                # 2D: pointIndex is reliable
+                selected_index = int(click_point['pointIndex'])
+
+            # safety
+            if selected_index < 0 or selected_index >= len(X):
+                return (
+                    stored_X,
+                    stored_tree,
+                    no_update,
+                    stored_selected_index,
+                    no_update,
+                    no_update,
+                )
+
+        # ----------------------------------------------------
+        # Case B: click on a node in the tree subplot
+        # trace 3 = nodes
+        # ----------------------------------------------------
+        elif curve == 3:
+            # rebuild nodes in same order as build_figure
+            _, _, _, _, _, node_refs = assign_tree_layout(tree)
+
+            node_idx = int(click_point['pointIndex'])
+            if node_idx < 0 or node_idx >= len(node_refs):
+                return (
+                    stored_X,
+                    stored_tree,
+                    no_update,
+                    stored_selected_index,
+                    no_update,
+                    no_update,
+                )
+
+            node = node_refs[node_idx]
+
+            # Only respond to *external* nodes with indices
+            if node['type'] != 'external' or 'indices' not in node or len(node['indices']) == 0:
+                return (
+                    stored_X,
+                    stored_tree,
+                    no_update,
+                    stored_selected_index,
+                    no_update,
+                    no_update,
+                )
+
+            # Choose first point in this leaf
+            selected_index = int(node['indices'][0])
+
+        # ----------------------------------------------------
+        # Otherwise ignore (edges, path, background)
+        # ----------------------------------------------------
+        else:
             return (
                 stored_X,
                 stored_tree,
@@ -644,11 +736,26 @@ def update_itree(
                 no_update,
             )
 
+        # ----------------------------------------------------
+        # Shared logic once we have selected_index
+        # ----------------------------------------------------
         point = X[selected_index]
         path_nodes, length = get_path_nodes_and_length(point, stored_X, tree)
 
+        # Decompose length into h (tree height) + c (external-node expectation)
+        h = len(path_nodes) - 1                # number of internal nodes
+        s = path_nodes[-1]['size']             # external node size
+
+        if s <= 1:
+            c = 0.0
+        elif s == 2:
+            c = 1.0
+        else:
+            H = np.log(s - 1) + np.euler_gamma
+            c = 2 * (H - (1 - 1 / s))
+
         fig = build_figure(X, tree, selected_index=selected_index)
-        message = f"Path length for selected point: {length:.3f}"
+        message = f"Path length for selected point: {h:.0f} + {c:.3f} = {length:.3f}"
 
         return (
             stored_X,        # data store unchanged
