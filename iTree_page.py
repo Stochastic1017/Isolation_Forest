@@ -228,12 +228,14 @@ iTree_layout = [
                 id='itree-scatter-plot',
                 figure={},
                 style={
-                    'display': 'inline-block'
+                    'height': '80vh',
+                    'width': '100%',
                 }
             )
         ],
         style={
-            'textAlign': 'center',
+            'display': 'flex',
+            'justifyContent': 'center',
             'width': '100%'
         }
     ),
@@ -831,8 +833,8 @@ def update_itree_fig(
                         mode='markers',
                         name='Previous levels',
                         marker=dict(
-                            size=6,
-                            opacity=0.8,
+                            size=10,
+                            opacity=1.0,
                             color='black',
                             line=dict(color='rgb(140, 140, 140)', width=0.5)
                         )
@@ -850,7 +852,7 @@ def update_itree_fig(
                         name='Left split (current depth)',
                         marker=dict(
                             size=10,
-                            opacity=0.9,
+                            opacity=1.0,
                             color='rgb(65, 105, 225)',
                             line=dict(color='rgb(30, 60, 180)', width=1)
                         )
@@ -868,7 +870,7 @@ def update_itree_fig(
                         name='Right split (current depth)',
                         marker=dict(
                             size=10,
-                            opacity=0.9,
+                            opacity=1.0,
                             color='rgb(220, 20, 60)',
                             line=dict(color='rgb(180, 10, 40)', width=1)
                         )
@@ -925,7 +927,7 @@ def update_itree_fig(
                     mode='markers',
                     name='Data',
                     marker=dict(
-                        size=8,
+                        size=10,
                         opacity=0.85,
                         color='rgb(120, 120, 120)',
                         line=dict(color='rgb(60, 60, 60)', width=0.8)
@@ -956,7 +958,7 @@ def update_itree_fig(
                         mode='markers',
                         name='Previous levels',
                         marker=dict(
-                            size=6,
+                            size=10,
                             opacity=0.8,
                             color='black',
                             line=dict(color='rgb(140, 140, 140)', width=0.5)
@@ -1060,10 +1062,11 @@ def update_itree_fig(
     fig.update_yaxes(visible=False, row=1, col=2)
 
     fig.update_layout(
-        height=700,
-        width=1300,
-        margin=dict(l=40, r=40, t=80, b=50),
+        height=800,
+        width=1600,
+        margin=dict(l=50, r=50, t=80, b=50),
         template="simple_white",
+        showlegend=False,
         title={
             "text": f"Isolation Tree – step-wise splits up to depth {depth}",
             "x": 0.5,
