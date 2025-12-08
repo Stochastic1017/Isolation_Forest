@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from plotly.subplots import make_subplots
-from dash import html, dcc, Input, Output, callback
+from dash import html, dcc, Input, Output, State, callback, callback_context
 from Isolation_Forest import IsolationForestAnomalyDetector
 
 iTree_layout = [
@@ -29,27 +29,27 @@ iTree_layout = [
             dcc.Markdown(
                 """
                 ```python
-                def iTree(self, X=None, counter=0, limit=100):
+                def iTree(self, S=None, c=0, l=100):
 
-                    # fallback to use all data if X is None             
-                    if X is None:
-                        X = self.X
+                    # fallback to use all data if X is None
+                    if S is None:
+                        S = self.X
 
-                    # base case: all points are isolated or height limit reached
-                    if (len(X) <= 1) or (counter >= limit) or (np.all(X == X[0])):
+                    # base case: all points are isolated, tree height limit reached, all points are equal 
+                    if (len(S) <= 1) or (c >= l) or np.all(np.isclose(S, S[0], rtol=1e-05, atol=1e-08)):
                         # Create external node when point is isolated
-                        return {'type': 'external', 'size': len(X)}
+                        return {'type': 'external', 'size': len(S)}
 
                     # Split left and right from random point on random axis
-                    left_split, right_split, split_axis, split_point = self.binary_partition(X)
+                    S_left, S_right, q, p = self.binary_partition(S)
 
                     # Create internal node with recursive calls
                     return {
                         'type': 'internal',
-                        'left': self.iTree(left_split, counter+1, limit),  # further split left into two, add 1 to the counter
-                        'right': self.iTree(right_split, counter+1,limit), # further split right into two, add 1 to the counter
-                        'split_axis': split_axis,
-                        'split_point': split_point
+                        'left': self.iTree(S_left, c+1, l),  # further split left into two, add 1 to the counter
+                        'right': self.iTree(S_right, c+1,l), # further split right into two, add 1 to the counter
+                        'split_axis': q,
+                        'split_point': p
                     }
                 ```
                 """
@@ -64,27 +64,44 @@ iTree_layout = [
         html.Div([
             html.H3("Mathematical Description"),
             dcc.Markdown(
-                    r'''
-                    Let $\mathbf{X} \in \mathbb{R}^{M \times d}$ denote the data matrix as previously defined.
+                r'''
+                Let $\mathbf{X} \in \mathbb{R}^{M \times d}$ denote the data matrix as previously defined.
 
-                    Consider operation $\operatorname{iTree}(X, c, \ell)$
-                    
-                    **Stopping rule (external node).**
-                    
-                    If any of the following conditions hold:
-                    $$
-                      |\mathbf{X}| \le 1, \quad
-                      c \ge \ell, \quad
-                      \text{or all rows of } \mathbf{X} \text{ are identical},
-                    $$
-                    Then, recurssion is stopped.
+                Consider the recursively defined operation:
+                $$
+                \operatorname{iTree}(\mathbf{S},\,c,\,\ell),
+                \qquad \mathbf{S} \subseteq \mathbf{X},\; \mathbf{S} \in \mathbb{R}^{N \times d}.
+                $$
 
-                    **Recursive step (internal node).**
+                $\textbf{Stopping rule (external node).}$
 
-                    Else:
- 
-                    $$\operatorname{BinaryPartition}(S)$$
-                    
+                Create an external node when:
+                $$
+                |\mathbf{S}| \le 1,
+                \qquad
+                c \ge \ell,
+                \qquad
+                \text{or }
+                \forall\,\vec{s},\vec{t}\in \mathbf{S},\; \vec{s}=\vec{t}.
+                $$
+
+                $\textbf{Recursive step (internal node).}$
+
+                Else, create an internal node when:
+                $$
+                (\mathbf{S}_{\text{left}},\,\mathbf{S}_{\text{right}},\,q,\,p)
+                \;:=\;
+                \operatorname{BinaryPartition}(\mathbf{S})
+                $$
+                using the previously defined procedure.
+
+                The node stores the tuple $(q,p)$ and recurses on each child:
+                $$
+                \operatorname{iTree}(\mathbf{S}_{\text{left}},\, c+1,\, \ell),
+                \qquad
+                \operatorname{iTree}(\mathbf{S}_{\text{right}},\, c+1,\, \ell).
+                $$
+                until a stopping condition is satisfied.    
                 ''', mathjax=True
             ),
         ], style={
@@ -99,68 +116,116 @@ iTree_layout = [
     }),
 
     html.Div([
-        html.H3(
-            "Binary Partition Controls",
-            style={
-                'marginBottom': '10px',
-                'fontWeight': 'bold',
-                'color': '#2b2d42',
-                'borderBottom': '2px solid #edf2f4',
-                'paddingBottom': '8px'
-            }
-        ),
+       html.H3(
+           "iTree Controls",
+           style={
+               'marginBottom': '10px',
+               'fontWeight': 'bold',
+               'color': '#2b2d42',
+               'borderBottom': '2px solid #edf2f4',
+               'paddingBottom': '8px'
+           }
+       ),
 
-        html.Div([
-            html.Div([
-                html.Label(
-                    "Number of Points:",
-                    style={'fontWeight': '600', 'marginBottom': '6px', 'display': 'block'}
-                ),
-                dcc.Slider(
-                    0, 520, 10,
-                    value=20,
-                    id='bp-number-of-points-slider',
-                    marks={0: '0', 252: '252', 520: '520'},
-                    tooltip={"always_visible": False},
-                )
-            ], style={'flex': '1', 'marginRight': '20px'}),
+       html.Div([
+           # --- Generate random data ---
+           html.Div([
+               html.Button(
+                   "Generate Random Data",
+                   id='itree-generate-data-button',
+                   n_clicks=0,
+                   style={
+                       'backgroundColor': '#2b2d42',
+                       'color': 'white',
+                       'border': 'none',
+                       'borderRadius': '8px',
+                       'padding': '10px 22px',
+                       'cursor': 'pointer',
+                       'fontWeight': 'bold',
+                       'boxShadow': '2px 2px 5px rgba(0,0,0,0.15)',
+                       'transition': '0.2s',
+                       'marginBottom': '10px',
+                       'width': '100%'
+                   }
+               )
+           ], style={'flex': '0.7', 'marginRight': '20px'}),
 
-            html.Div([
-                html.Button(
-                    "Generate Random Split",
-                    id='bp-generate-split-button',
-                    n_clicks=0,
-                    style={
-                        'backgroundColor': '#2b2d42',
-                        'color': 'white',
-                        'border': 'none',
-                        'borderRadius': '8px',
-                        'padding': '10px 22px',
-                        'cursor': 'pointer',
-                        'fontWeight': 'bold',
-                        'boxShadow': '2px 2px 5px rgba(0,0,0,0.15)',
-                        'transition': '0.2s'
-                    }
-                )
-            ], style={'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'center'})
-        ],
-        style={
-            'display': 'flex',
-            'flexDirection': 'row',
-            'alignItems': 'center',
-            'padding': '15px',
-            'backgroundColor': 'white',
-            'borderRadius': '10px',
-            'boxShadow': '0px 3px 8px rgba(0,0,0,0.07)',
-            'border': '1px solid #edf2f4',
-            'marginBottom': '20px'
-        })
+           # --- Number of points slider ---
+           html.Div([
+               html.Label(
+                   "Number of Points:",
+                   style={'fontWeight': '600', 'marginBottom': '6px', 'display': 'block'}
+               ),
+               dcc.Slider(
+                   0, 520, 10,
+                   value=20,
+                   id='itree-number-of-points-slider',
+                   marks={0: '0', 252: '252', 520: '520'},
+                   tooltip={"always_visible": False},
+               )
+           ], style={'flex': '1.2', 'marginRight': '20px'}),
+
+           # --- 1D / 2D toggle ---
+           html.Div([
+               html.Label(
+                   "Dimension:",
+                   style={'fontWeight': '600', 'marginBottom': '6px', 'display': 'block'}
+               ),
+               dcc.RadioItems(
+                   id='itree-dimension-toggle',
+                   options=[
+                       {'label': '1D', 'value': '1d'},
+                       {'label': '2D', 'value': '2d'},
+                   ],
+                   value='2d',
+                   labelStyle={'display': 'inline-block', 'marginRight': '15px'}
+               )
+           ], style={'flex': '0.8', 'marginRight': '10px'}),
+
+           # --- Expand tree button ---
+           html.Div([
+               html.Button(
+                   "Expand Tree One Level",
+                   id='itree-expand-tree-button',
+                   n_clicks=0,
+                   style={
+                       'backgroundColor': '#2b2d42',
+                       'color': 'white',
+                       'border': 'none',
+                       'borderRadius': '8px',
+                       'padding': '10px 22px',
+                       'cursor': 'pointer',
+                       'fontWeight': 'bold',
+                       'boxShadow': '2px 2px 5px rgba(0,0,0,0.15)',
+                       'transition': '0.2s',
+                       'width': '100%'
+                   }
+               )
+           ], style={'flex': '0.9'}),
+
+       ], style={
+           'display': 'flex',
+           'flexDirection': 'row',
+           'alignItems': 'center',
+           'padding': '15px',
+           'backgroundColor': 'white',
+           'borderRadius': '10px',
+           'boxShadow': '0px 3px 8px rgba(0,0,0,0.07)',
+           'border': '1px solid #edf2f4',
+           'marginBottom': '20px'
+       })
+    ]),
+
+    html.Div([
+            dcc.Store(id='itree-data-store'),
+            dcc.Store(id='itree-tree-store'),
+            dcc.Store(id='itree-depth-store'),
     ]),
 
     html.Div(
         [
             dcc.Graph(
-                id='bp-scatter-plot',
+                id='itree-scatter-plot',
                 figure={},
                 style={
                     'display': 'inline-block'
@@ -218,3 +283,260 @@ iTree_layout = [
         'padding': '20px 0'
     })
 ]
+
+@callback(
+    Output('itree-scatter-plot', 'figure'),
+    Output('itree-data-store', 'data'),
+    Output('itree-tree-store', 'data'),
+    Output('itree-depth-store', 'data'),
+    Input('itree-generate-data-button', 'n_clicks'),
+    Input('itree-expand-tree-button', 'n_clicks'),
+    Input('itree-number-of-points-slider', 'value'),
+    Input('itree-dimension-toggle', 'value'),
+    State('itree-data-store', 'data'),
+    State('itree-tree-store', 'data'),
+    State('itree-depth-store', 'data'),
+)
+def update_itree_fig(
+    n_clicks_generate,
+    n_clicks_expand,
+    M,
+    dim_mode,
+    stored_X,
+    stored_tree,
+    stored_depth
+):
+    ctx = callback_context
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
+
+    # ------------------------------------------------------------------
+    # Restore stored values
+    # ------------------------------------------------------------------
+    X = None
+    if isinstance(stored_X, list):
+        X = np.array(stored_X)
+    tree = stored_tree
+    depth = stored_depth if stored_depth is not None else 0
+
+    # ------------------------------------------------------------------
+    # Helper: maximum depth of an iTree
+    # ------------------------------------------------------------------
+    def get_max_depth(node):
+        if not isinstance(node, dict):
+            return 0
+        if node.get('type') == 'external':
+            return 0
+        return 1 + max(get_max_depth(node.get('left')), get_max_depth(node.get('right')))
+
+    # ------------------------------------------------------------------
+    # Helper: build a fresh dataset + full iTree
+    # ------------------------------------------------------------------
+    def build_new_data_and_tree(M, dim_mode):
+        if M is None:
+            M_local = 20
+        else:
+            M_local = int(M)
+
+        if dim_mode == '1d':
+            X_local = np.random.normal(loc=0.0, scale=1.0, size=M_local).reshape(-1, 1)
+        else:  # '2d'
+            X_local = np.random.multivariate_normal(
+                mean=[0.0, 0.0],
+                cov=[[1.0, 0.0], [0.0, 1.0]],
+                size=M_local
+            )
+
+        model = IsolationForestAnomalyDetector(X_local)
+
+        # Reasonable max depth: ~ ceil(log2(n)) + 1, with a fallback
+        if M_local > 1:
+            limit = int(np.ceil(np.log2(M_local))) + 1
+        else:
+            limit = 1
+
+        full_tree = model.iTree(S=None, c=0, l=limit)
+        return X_local, full_tree
+
+    # ------------------------------------------------------------------
+    # Decide what triggered the callback
+    # ------------------------------------------------------------------
+    if triggered_id in ['itree-generate-data-button',
+                        'itree-number-of-points-slider',
+                        'itree-dimension-toggle']:
+        # Fresh data and tree; reset depth
+        X, tree = build_new_data_and_tree(M, dim_mode)
+        depth = 0
+
+    elif triggered_id == 'itree-expand-tree-button' and tree is not None:
+        # Step-wise reveal: increase depth (up to max depth)
+        max_depth = get_max_depth(tree)
+        if depth < max_depth:
+            depth += 1
+
+    # Initial load fallback (no trigger / no data yet)
+    if X is None:
+        X, tree = build_new_data_and_tree(M, dim_mode)
+        depth = 0
+
+    # Storeable version of X
+    X_list = X.tolist() if X is not None else []
+
+    # ------------------------------------------------------------------
+    # Helper: collect splits up to a given depth
+    # Each split is stored with its region bounds to draw lines correctly
+    # ------------------------------------------------------------------
+    def collect_splits(itree, depth_limit, bounds, current_depth=1, splits=None):
+        """
+        bounds = (xmin, xmax, ymin, ymax)
+        """
+        if splits is None:
+            splits = []
+
+        if itree is None or not isinstance(itree, dict):
+            return splits
+
+        if itree.get('type') == 'external':
+            return splits
+
+        if current_depth > depth_limit:
+            return splits
+
+        q = itree['split_axis']
+        p = itree['split_point']
+        xmin, xmax, ymin, ymax = bounds
+
+        # Record this split
+        splits.append({'axis': q, 'point': p, 'bounds': bounds})
+
+        # Child bounds
+        if q == 0:
+            left_bounds = (xmin, p, ymin, ymax)
+            right_bounds = (p, xmax, ymin, ymax)
+        else:
+            left_bounds = (xmin, xmax, ymin, p)
+            right_bounds = (xmin, xmax, p, ymax)
+
+        # Recurse on children
+        collect_splits(itree['left'], depth_limit, left_bounds, current_depth + 1, splits)
+        collect_splits(itree['right'], depth_limit, right_bounds, current_depth + 1, splits)
+
+        return splits
+
+    # ------------------------------------------------------------------
+    # Build figure
+    # ------------------------------------------------------------------
+    if X is None or len(X) == 0:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No data – adjust the number of points or generate data",
+            template="simple_white"
+        )
+        return fig, X_list, tree, depth
+
+    if dim_mode == '1d':
+        x_vals = X[:, 0]
+        x_min = float(x_vals.min())
+        x_max = float(x_vals.max())
+        y_min, y_max = -0.5, 0.5
+
+        # Basic scatter of points along x-axis
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=x_vals,
+                y=np.zeros_like(x_vals),
+                mode='markers',
+                name='Data'
+            )
+        )
+
+        # Draw splits up to current depth (vertical lines)
+        if tree is not None and depth > 0:
+            splits = collect_splits(
+                tree,
+                depth_limit=depth,
+                bounds=(x_min, x_max, y_min, y_max)
+            )
+            for s in splits:
+                p = s['point']
+                fig.add_vline(
+                    x=p,
+                    line_dash="dash",
+                    line_width=1
+                )
+
+        fig.update_yaxes(visible=False, range=[y_min, y_max])
+        fig.update_layout(
+            title=f"Isolation Tree (1D) – showing splits up to depth {depth}",
+            xaxis_title="x",
+            template="simple_white",
+            showlegend=False
+        )
+
+    else:  # '2d'
+        x_vals = X[:, 0]
+        y_vals = X[:, 1]
+
+        x_min = float(x_vals.min())
+        x_max = float(x_vals.max())
+        y_min = float(y_vals.min())
+        y_max = float(y_vals.max())
+
+        # Add a bit of padding so lines don't touch the border
+        pad_x = 0.1 * (x_max - x_min if x_max > x_min else 1.0)
+        pad_y = 0.1 * (y_max - y_min if y_max > y_min else 1.0)
+        x_min -= pad_x
+        x_max += pad_x
+        y_min -= pad_y
+        y_max += pad_y
+
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=x_vals,
+                y=y_vals,
+                mode='markers',
+                name='Data'
+            )
+        )
+
+        # Draw axis-aligned splits up to current depth
+        if tree is not None and depth > 0:
+            splits = collect_splits(
+                tree,
+                depth_limit=depth,
+                bounds=(x_min, x_max, y_min, y_max)
+            )
+            for s in splits:
+                q = s['axis']
+                p = s['point']
+                bx_min, bx_max, by_min, by_max = s['bounds']
+
+                if q == 0:
+                    # Vertical line
+                    fig.add_shape(
+                        type="line",
+                        x0=p, x1=p,
+                        y0=by_min, y1=by_max,
+                        line=dict(dash="dash", width=1)
+                    )
+                else:
+                    # Horizontal line
+                    fig.add_shape(
+                        type="line",
+                        x0=bx_min, x1=bx_max,
+                        y0=p, y1=p,
+                        line=dict(dash="dash", width=1)
+                    )
+
+        fig.update_xaxes(range=[x_min, x_max])
+        fig.update_yaxes(range=[y_min, y_max])
+        fig.update_layout(
+            title=f"Isolation Tree (2D) – showing splits up to depth {depth}",
+            xaxis_title="x₁",
+            yaxis_title="x₂",
+            template="simple_white",
+            showlegend=False
+        )
+
+    return fig, X_list, tree, depth
