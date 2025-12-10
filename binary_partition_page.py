@@ -9,9 +9,23 @@ from plotly.subplots import make_subplots
 from dash import html, dcc, Input, Output, callback
 from Isolation_Forest import IsolationForestAnomalyDetector
 
+# -----------------------------------------------------------------------------
+# Module-level stored data (so "Generate Random Data" stores samples and
+# subsequent "Run Initial Binary Partition" uses the stored data rather than
+# drawing new samples). This keeps behaviour deterministic with respect to the
+# generated dataset while still allowing the binary partition operation to be
+# randomized on each partition call (as desired).
+# -----------------------------------------------------------------------------
+_stored_one_d = None
+_stored_two_d = None
+_stored_M = None
+_last_gen_clicks = 0
+_last_bp_clicks = 0
+
+
 binary_partition_layout = [
     html.H1(
-        "Binary Partition in Isolation Forest",
+        "Randomized Binary Partition in Isolation Forest",
         style={'textAlign': 'center', 'color': '#2b2d42'}
     ),
 
@@ -92,9 +106,8 @@ binary_partition_layout = [
 
                 3. Create two subsets such that:
                    $$
-                   S_{\text{left}} = \{ \vec{s_{l}} \in X : s_{lq} < p \}, \quad
+                   S_{\text{left}} = \{ \vec{s_{l}} \in X : s_{lq} < p \}, \\quad
                    S_{\text{right}} = \{ \vec{s_{r}} \in X : s_{rq} \ge p \}
-                   $$
                 ''', mathjax=True
             ),
         ], style={
@@ -109,103 +122,110 @@ binary_partition_layout = [
     }),
 
     html.Div([
-        html.H3(
-            "Binary Partition Controls",
-            style={
-                'marginBottom': '10px',
-                'fontWeight': 'bold',
-                'color': '#2b2d42',
-                'borderBottom': '2px solid #edf2f4',
-                'paddingBottom': '8px'
-            }
-        ),
+       html.H3(
+           "Randomized Binary Partition Controls",
+           style={
+               'marginBottom': '10px',
+               'fontWeight': 'bold',
+               'color': '#2b2d42',
+               'borderBottom': '2px solid #edf2f4',
+               'paddingBottom': '8px'
+           }
+       ),
 
-        html.Div([
-            html.Div([
-                html.Label(
-                    "Number of Points:",
-                    style={'fontWeight': '600', 'marginBottom': '6px', 'display': 'block'}
-                ),
-                dcc.Slider(
-                    0, 520, 10,
-                    value=20,
-                    id='bp-number-of-points-slider',
-                    marks={0: '0', 252: '252', 520: '520'},
-                    tooltip={"always_visible": False},
-                )
-            ], style={'flex': '1', 'marginRight': '20px'}),
+       html.Div([
+           # --- Generate random data ---
+           html.Div([
+               html.Button(
+                   "Generate Random Data",
+                   id='bp-generate-data-button',
+                   n_clicks=0,
+                   style={
+                       'backgroundColor': '#2b2d42',
+                       'color': 'white',
+                       'border': 'none',
+                       'borderRadius': '8px',
+                       'padding': '10px 22px',
+                       'cursor': 'pointer',
+                       'fontWeight': 'bold',
+                       'boxShadow': '2px 2px 5px rgba(0,0,0,0.15)',
+                       'transition': '0.2s',
+                       'marginBottom': '10px',
+                       'width': '100%'
+                   }
+               )
+           ], style={'flex': '0.7', 'marginRight': '20px'}),
 
-            html.Div([
-                html.Button(
-                    "Generate Random Split",
-                    id='bp-generate-split-button',
-                    n_clicks=0,
-                    style={
-                        'backgroundColor': '#2b2d42',
-                        'color': 'white',
-                        'border': 'none',
-                        'borderRadius': '8px',
-                        'padding': '10px 22px',
-                        'cursor': 'pointer',
-                        'fontWeight': 'bold',
-                        'boxShadow': '2px 2px 5px rgba(0,0,0,0.15)',
-                        'transition': '0.2s'
-                    }
-                )
-            ], style={'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'center'})
-        ],
-        style={
-            'display': 'flex',
-            'flexDirection': 'row',
-            'alignItems': 'center',
-            'padding': '15px',
-            'backgroundColor': 'white',
-            'borderRadius': '10px',
-            'boxShadow': '0px 3px 8px rgba(0,0,0,0.07)',
-            'border': '1px solid #edf2f4',
-            'marginBottom': '20px'
-        })
+           # --- Number of points slider ---
+           html.Div([
+               html.Label(
+                   "Number of Points:",
+                   style={'fontWeight': '600', 'marginBottom': '6px', 'display': 'block'}
+               ),
+               dcc.Slider(
+                   0, 520, 1,
+                   value=252,
+                   id='bp-number-of-points-slider',
+                   marks={0: '0', 252: '252', 520:'520'},
+                   tooltip={"always_visible": False},
+               )
+           ], style={'flex': '1.2', 'marginRight': '20px'}),
+
+           # --- Expand tree button ---
+           html.Div([
+               html.Button(
+                   "Run Initial Binary Partition",
+                   id='bp-initial-button',
+                   n_clicks=0,
+                   style={
+                       'backgroundColor': '#2b2d42',
+                       'color': 'white',
+                       'border': 'none',
+                       'borderRadius': '8px',
+                       'padding': '10px 22px',
+                       'cursor': 'pointer',
+                       'fontWeight': 'bold',
+                       'boxShadow': '2px 2px 5px rgba(0,0,0,0.15)',
+                       'transition': '0.2s',
+                       'width': '100%'
+                   }
+               )
+           ], style={'flex': '0.9'}),
+
+       ], style={
+           'display': 'flex',
+           'flexDirection': 'row',
+           'alignItems': 'center',
+           'padding': '15px',
+           'backgroundColor': 'white',
+           'borderRadius': '10px',
+           'boxShadow': '0px 3px 8px rgba(0,0,0,0.07)',
+           'border': '1px solid #edf2f4',
+           'marginBottom': '20px'
+       })
     ]),
 
     html.Div(
-        [
-            dcc.Graph(
-                id='bp-scatter-plot',
-                figure={},
-                style={
-                    'display': 'inline-block'
-                }
-            )
-        ],
-        style={
-            'textAlign': 'center',
-            'width': '100%'
-        }
-    ),
+            [
+                dcc.Graph(
+                    id='bp-scatter-plot',
+                    figure={},
+                    style={
+                        'display': 'inline-block'
+                    }
+                )
+            ],
+            style={
+                'textAlign': 'center',
+                'width': '100%'
+            }
+        ),
 
     html.Hr(),
 
     html.Div([
         dcc.Link(
-            '← Go to Overview / Intro',
-            href='/intro',
-            style={
-                'color': '#2b2d42',
-                'fontSize': '18px',
-                'textDecoration': 'none',
-                'fontWeight': 'bold',
-                'padding': '8px 14px',
-                'border': '2px solid #2b2d42',
-                'borderRadius': '8px',
-                'backgroundColor': '#f8f9fa',
-                'textAlign': 'center',
-                'display': 'inline-block',
-                'boxShadow': '2px 2px 4px rgba(0, 0, 0, 0.15)'
-            }
-        ),
-
-        dcc.Link(
-            'Go to iTrees →',
+            'Go to iTrees',
             href='/itrees',
             style={
                 'color': '#2b2d42',
@@ -224,19 +244,68 @@ binary_partition_layout = [
 
     ], style={
         'display': 'flex',
-        'justifyContent': 'space-between',
+        'justifyContent': 'right',
         'padding': '20px 0'
     })
 ]
+
 
 @callback(
     Output('bp-scatter-plot', 'figure'),
     [
         Input('bp-number-of-points-slider', 'value'),
-        Input('bp-generate-split-button', 'n_clicks')
+        Input('bp-generate-data-button', 'n_clicks'),
+        Input('bp-initial-button', 'n_clicks')
     ]
 )
-def generate_single_step_random_binary_partition(M, n_clicks):
+def generate_single_step_random_binary_partition(M, gen_data_clicks, bp_clicks):
+    global _stored_one_d, _stored_two_d, _stored_M, _last_gen_clicks, _last_bp_clicks
+
+    # Decide whether to (re)generate stored data or reuse existing
+    # 1) If user pressed "Generate Random Data" (gen_data_clicks increments and
+    #    is greater than the last recorded value), then generate new samples and
+    #    store them for later partitions.
+    # 2) If user pressed "Run Initial Binary Partition" (bp_clicks) then use the
+    #    stored samples (if available) and run a binary partition on them. If no
+    #    stored samples exist yet, we generate them once (based on M) and store
+    #    them, then perform the partition.
+
+    # If slider M changed but neither button pressed, we will not automatically
+    # regenerate stored data. Generation only occurs on the Generate button or
+    # the first call when no data is present.
+
+    # ---------- Generation event ----------
+    if gen_data_clicks and gen_data_clicks > _last_gen_clicks:
+        # Generate and store data based on M
+        _stored_one_d = np.random.normal(loc=0.0, scale=1.0, size=M).reshape(-1, 1)
+        _stored_two_d = np.random.multivariate_normal(mean=[0.0, 0.0],
+                                                      cov=[[1.0, 0.0], [0.0, 1.0]],
+                                                      size=M)
+        _stored_M = M
+        _last_gen_clicks = gen_data_clicks
+        # Reset bp counter so subsequent bp clicks are recognised correctly
+        _last_bp_clicks = bp_clicks or 0
+
+    # ---------- If no stored data exists, generate once as a fallback ----------
+    if _stored_one_d is None or _stored_two_d is None:
+        _stored_one_d = np.random.normal(loc=0.0, scale=1.0, size=M).reshape(-1, 1)
+        _stored_two_d = np.random.multivariate_normal(mean=[0.0, 0.0],
+                                                      cov=[[1.0, 0.0], [0.0, 1.0]],
+                                                      size=M)
+        _stored_M = M
+
+    # ---------- Partition event (bp_clicks) ----------
+    # If the user presses the "Run Initial Binary Partition" button we want to
+    # run a binary partition on the stored data (without generating new data).
+    # We also allow the first call to act as a partition if gen button hasn't
+    # been pressed yet (using the fallback-generated data above).
+
+    # NOTE: whether bp_clicks has changed or not, we will run the partition
+    # operation now because the UI always expects a figure returned. The key
+    # difference is that we will not regenerate the underlying data unless the
+    # Generate button was explicitly pressed.
+
+    # Create the figure and perform partitions using the stored datasets.
 
     ##################
     # Build 2x2 figure
@@ -256,12 +325,7 @@ def generate_single_step_random_binary_partition(M, n_clicks):
     ##################
     # One-Dimensional
     ##################
-    # Make it 2D (n, 1) because the class expects X with shape (M, d)
-    random_one_dimensional_array = np.random.normal(
-        loc=0.0,
-        scale=1.0,
-        size=M
-    ).reshape(-1, 1)
+    random_one_dimensional_array = _stored_one_d
 
     one_dimensional_iForest_model = IsolationForestAnomalyDetector(
         random_one_dimensional_array
@@ -505,11 +569,7 @@ def generate_single_step_random_binary_partition(M, n_clicks):
     ##################
     # Two-Dimensional
     ##################
-    random_two_dimensional_array = np.random.multivariate_normal(
-        mean=[0.0, 0.0],
-        cov=[[1.0, 0.0], [0.0, 1.0]],
-        size=M
-    )
+    random_two_dimensional_array = _stored_two_d
 
     two_dimensional_iForest_model = IsolationForestAnomalyDetector(
         random_two_dimensional_array
