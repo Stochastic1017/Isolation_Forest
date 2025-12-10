@@ -29,7 +29,7 @@ iTree_layout = [
             dcc.Markdown(
                 """
                 ```python
-                def iTree(self, S=None, c=0, l=100):
+                def iTree(self, S=None, c=0, l):
 
                     # fallback to use all data if X is None
                     if S is None:
@@ -116,105 +116,97 @@ iTree_layout = [
     }),
 
     html.Div([
-       html.H3(
-           "iTree Controls",
-           style={
-               'marginBottom': '10px',
-               'fontWeight': 'bold',
-               'color': '#2b2d42',
-               'borderBottom': '2px solid #edf2f4',
-               'paddingBottom': '8px'
-           }
-       ),
+        # Generate button
+        html.Button(
+            "Generate Random Data",
+            id='itree-generate-data-button',
+            n_clicks=0,
+            style={
+                'backgroundColor': '#2b2d42',
+                'color': 'white',
+                'border': 'none',
+                'borderRadius': '8px',
+                'cursor': 'pointer',
+                'fontWeight': 'bold',
+                'padding': '10px 22px',
+                'boxShadow': '2px 2px 5px rgba(0,0,0,0.15)',
+                'transition': '0.2s'
+            }
+        ),
 
-       html.Div([
-           # --- Generate random data ---
-           html.Div([
-               html.Button(
-                   "Generate Random Data",
-                   id='itree-generate-data-button',
-                   n_clicks=0,
-                   style={
-                       'backgroundColor': '#2b2d42',
-                       'color': 'white',
-                       'border': 'none',
-                       'borderRadius': '8px',
-                       'padding': '10px 22px',
-                       'cursor': 'pointer',
-                       'fontWeight': 'bold',
-                       'boxShadow': '2px 2px 5px rgba(0,0,0,0.15)',
-                       'transition': '0.2s',
-                       'marginBottom': '10px',
-                       'width': '100%'
-                   }
-               )
-           ], style={'flex': '0.7', 'marginRight': '20px'}),
+        # --- Number of points slider ---
+        html.Div([
+            html.Label(
+                "Number of Points:",
+                style={'fontWeight': '600', 'marginBottom': '6px', 'display': 'block'}
+            ),
+            dcc.Slider(
+                2, 20, 1,
+                value=10,
+                id='itree-number-of-points-slider',
+                marks={2: '2', 10: '10', 20: '20'},
+                tooltip={"always_visible": False},
+            )
+        ], style={'flex': '1.0', 'marginRight': '10px'}),
 
-           # --- Number of points slider ---
-           html.Div([
-               html.Label(
-                   "Number of Points:",
-                   style={'fontWeight': '600', 'marginBottom': '6px', 'display': 'block'}
-               ),
-               dcc.Slider(
-                   0, 10, 1,
-                   value=5,
-                   id='itree-number-of-points-slider',
-                   marks={0: '0', 10: '10'},
-                   tooltip={"always_visible": False},
-               )
-           ], style={'flex': '1.2', 'marginRight': '20px'}),
+        # Dimension toggle
+        html.Div([
+            html.Label("Dimension", style={'fontWeight': '600', 'marginRight': '6px'}),
+            dcc.RadioItems(
+                id='itree-dimension-toggle',
+                options=[
+                    {'label': '1D', 'value': '1d'},
+                    {'label': '2D', 'value': '2d'},
+                ],
+                value='2d',
+                labelStyle={'display': 'inline-block', 'marginRight': '10px'},
+                inputStyle={'marginRight': '4px'}
+            )
+        ], style={'display': 'flex', 'alignItems': 'center'}),
 
-           # --- 1D / 2D toggle ---
-           html.Div([
-               html.Label(
-                   "Dimension:",
-                   style={'fontWeight': '600', 'marginBottom': '6px', 'display': 'block'}
-               ),
-               dcc.RadioItems(
-                   id='itree-dimension-toggle',
-                   options=[
-                       {'label': '1D', 'value': '1d'},
-                       {'label': '2D', 'value': '2d'},
-                   ],
-                   value='2d',
-                   labelStyle={'display': 'inline-block', 'marginRight': '15px'}
-               )
-           ], style={'flex': '0.8', 'marginRight': '10px'}),
+        # Height limit display
+        html.Div([
+            html.Label("Height Limit:", style={'fontWeight': '600', 'marginRight': '6px'}),
+            html.Div(
+                id='itree-height-limit',
+                children="—",
+                style={
+                    'padding': '6px 10px',
+                    'borderRadius': '6px',
+                    'border': '1px solid #ddd',
+                    'backgroundColor': '#fafafa',
+                    'minWidth': '40px',
+                    'textAlign': 'center'
+                }
+            )
+        ], style={'display': 'flex', 'alignItems': 'center'}),
 
-           # --- Expand tree button ---
-           html.Div([
-               html.Button(
-                   "Run Binary Partition By One-Step",
-                   id='itree-expand-tree-button',
-                   n_clicks=0,
-                   style={
-                       'backgroundColor': '#2b2d42',
-                       'color': 'white',
-                       'border': 'none',
-                       'borderRadius': '8px',
-                       'padding': '10px 22px',
-                       'cursor': 'pointer',
-                       'fontWeight': 'bold',
-                       'boxShadow': '2px 2px 5px rgba(0,0,0,0.15)',
-                       'transition': '0.2s',
-                       'width': '100%'
-                   }
-               )
-           ], style={'flex': '0.9'}),
+        # Expand button
+        html.Button(
+            "One-Step Partition",
+            id='itree-expand-tree-button',
+            n_clicks=0,
+            style={
+                'backgroundColor': '#2b2d42',
+                'color': 'white',
+                'border': 'none',
+                'borderRadius': '8px',
+                'padding': '10px 22px',
+                'cursor': 'pointer',
+                'fontWeight': 'bold',
+                'boxShadow': '2px 2px 5px rgba(0,0,0,0.15)',
+                'transition': '0.2s'
+            }
+        ),
 
-       ], style={
-           'display': 'flex',
-           'flexDirection': 'row',
-           'alignItems': 'center',
-           'padding': '15px',
-           'backgroundColor': 'white',
-           'borderRadius': '10px',
-           'boxShadow': '0px 3px 8px rgba(0,0,0,0.07)',
-           'border': '1px solid #edf2f4',
-           'marginBottom': '20px'
-       })
-    ]),
+    ], style={
+        'display': 'flex',
+        'flexDirection': 'row',
+        'alignItems': 'center',
+        'justifyContent': 'flex-start',
+        'gap': '18px',
+        'padding': '10px 6px'
+    }),
 
     html.Div([
             dcc.Store(id='itree-data-store'),
@@ -244,8 +236,8 @@ iTree_layout = [
 
     html.Div([
         dcc.Link(
-            'Go to Overview / Intro',
-            href='/error404',
+            'Go to Binary Partition',
+            href='/binary_partition',
             style={
                 'color': '#2b2d42',
                 'fontSize': '18px',
@@ -292,6 +284,7 @@ iTree_layout = [
     Output('itree-data-store', 'data'),
     Output('itree-tree-store', 'data'),
     Output('itree-depth-store', 'data'),
+    Output('itree-height-limit', 'children'),
     Input('itree-generate-data-button', 'n_clicks'),
     Input('itree-expand-tree-button', 'n_clicks'),
     Input('itree-number-of-points-slider', 'value'),
@@ -344,7 +337,7 @@ def update_itree_fig(
 
         model = IsolationForestAnomalyDetector(X_local)
 
-        height_limit = 10
+        height_limit = int(np.ceil(np.log2(M_local)))
         full_tree = model.iTree(S=None, c=0, l=height_limit)
         return X_local, full_tree
 
@@ -1074,4 +1067,13 @@ def update_itree_fig(
         }
     )
 
-    return fig, X_list, tree, depth
+    # Compute height limit for display (safe fallback if X is None)
+    if X is None or len(X) == 0:
+        height_limit = "—"
+    else:
+        try:
+            height_limit = int(np.ceil(np.log2(max(1, X.shape[0]))))
+        except Exception:
+            height_limit = "—"
+
+    return fig, X_list, tree, depth, f"{height_limit}"
