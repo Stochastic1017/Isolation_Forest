@@ -179,13 +179,34 @@ path_length_layout = [
                    style={'fontWeight': '600', 'marginBottom': '6px', 'display': 'block'}
                ),
                dcc.Slider(
-                   0, 20, 1,
-                   value=5,
+                   0, 520, 1,
+                   value=20,
                    id='path-length-number-of-points-slider',
-                   marks={0: '0', 10: '10', 20: '20'},
+                   marks={0: '0', 252: '252', 520: '520'},
                    tooltip={"always_visible": False},
                )
            ], style={'flex': '1.2', 'marginRight': '20px'}),
+
+           # --- Height limit display (read-only) ---
+           html.Div([
+               html.Label(
+                   "Height Limit:",
+                   style={'fontWeight': '600', 'marginBottom': '6px', 'display': 'block'}
+               ),
+               html.Div(
+                   id='path-length-height-limit',
+                   children="—",
+                   style={
+                       'padding': '8px 12px',
+                       'borderRadius': '8px',
+                       'border': '1px solid #e9ecef',
+                       'backgroundColor': '#f8f9fa',
+                       'minWidth': '70px',
+                       'textAlign': 'center',
+                       'fontWeight': '600'
+                   }
+               )
+           ], style={'flex': '0.6', 'marginRight': '10px'}),
 
            # --- 1D / 2D toggle ---
            html.Div([
@@ -275,8 +296,8 @@ path_length_layout = [
         ),
 
         dcc.Link(
-            'Go to iTrees',
-            href='/error404',
+            'Go to iForest',
+            href='/iforest',
             style={
                 'color': '#2b2d42',
                 'fontSize': '18px',
@@ -335,10 +356,6 @@ def assign_leaf_indices(tree, X):
         node.setdefault('indices', []).append(i)
 
 def build_random_data(num_points, dim):
-    """
-    Generate random 1D or 2D data and a single iTree over that data.
-    We intentionally inject duplicates so some external nodes have size s > 2.
-    """
     if num_points <= 0:
         X = np.empty((0, 2 if dim == '2d' else 1))
         tree = {'type': 'external', 'size': 0}
@@ -346,30 +363,25 @@ def build_random_data(num_points, dim):
 
     # base random data
     if dim == '1d':
-        X = np.random.uniform(-5, 5, size=(num_points, 1))
+        # produce shape (num_points, 1)
+        X = np.random.normal(0, 1, size=num_points).reshape(-1, 1)
     else:
-        X = np.random.uniform(-5, 5, size=(num_points, 2))
+        # produce shape (num_points, 2)  <-- pass an int for size, not a tuple
+        X = np.random.multivariate_normal([0, 0], [[1, 0], [0, 1]], size=num_points)
+        # ensure shape is (n_samples, n_features)
+        if X.ndim == 1:
+            X = X.reshape(-1, 1)
 
-    # --- inject duplicates to create leaves with s > 2 ---
-    if num_points >= 3:
-        # choose how many points should be identical (a small cluster)
-        cluster_size = max(3, num_points // 4)   # e.g. 25% of points, at least 3
-        cluster_size = min(cluster_size, num_points)
-
-        # pick random indices that will form the duplicate cluster
-        idx = np.random.choice(num_points, size=cluster_size, replace=False)
-
-        # choose a "center" and copy it to all chosen indices
-        center = X[idx[0]].copy()
-        X[idx] = center
-        # now those `cluster_size` points are exactly equal, so when the iTree
-        # recurses down to a node containing only them, np.all(isclose(...)) is
-        # True and you get an external node with size = cluster_size (>2)
+    # Build the isolation tree using the height limit (ceil(log2(n_samples)))
+    n_samples = X.shape[0]
+    height_limit = int(np.ceil(np.log2(max(1, n_samples))))
 
     detector = IsolationForestAnomalyDetector(X)
-    tree = detector.iTree()   # single isolation tree
+    # pass explicit arguments so the iTree uses the computed height limit
+    # signature in other pages: iTree(S=None, c=0, l=height_limit)
+    tree = detector.iTree(S=None, c=0, l=height_limit)
 
-    # NEW: annotate leaves with which data-point indices they contain
+    # Annotate leaves with which data-point indices they contain
     assign_leaf_indices(tree, X)
 
     return X, tree
@@ -588,6 +600,7 @@ def build_figure(X, tree, selected_index=None):
         Output('path-length-selected-index-store', 'data'),
         Output('path-length-scatter-plot', 'figure'),
         Output('path-length-summary-output', 'children'),
+        Output('path-length-height-limit', 'children'),   # <-- NEW output
     ],
     [
         Input('path-length-generate-data-button', 'n_clicks'),
@@ -612,7 +625,6 @@ def update_itree(
 ):
 
     ctx = callback_context
-    # figure out what triggered this callback
     trigger = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
 
     # ------------------------------------------------------------------
@@ -621,24 +633,58 @@ def update_itree(
     if trigger is None or trigger == 'path-length-generate-data-button':
         # behave like user clicked "generate random data"
         X, tree = build_random_data(num_points, dim)
-        selected_index = None
 
+        # Choose a random point to be selected (so path is shown immediately)
+        if X is None or len(X) == 0:
+            selected_index = None
+        else:
+            selected_index = int(np.random.choice(len(X), 1)[0])
+
+        # compute tree depth
         def depth(node, d=0):
+            if node is None:
+                return d
             if node['type'] == 'external':
                 return d
             return max(depth(node['left'], d + 1), depth(node['right'], d + 1))
 
         depth_info = depth(tree) if tree is not None else 0
-        fig = build_figure(X, tree, selected_index=None)
-        message = "Click a data point or an external node to see its path length."
+
+        # compute height limit as int(ceil(log2(n_samples))) for display
+        n_samples = 0 if X is None else len(X)
+        if n_samples <= 0:
+            height_limit_display = "—"
+        else:
+            height_limit_display = str(int(np.ceil(np.log2(max(1, n_samples)))))
+
+        fig = build_figure(X, tree, selected_index=selected_index)
+
+        # Compute path length for the auto-selected default point
+        if selected_index is not None:
+            point = X[selected_index]
+            path_nodes, length = get_path_nodes_and_length(point, X, tree)
+
+            h = len(path_nodes) - 1
+            s = path_nodes[-1]['size']
+
+            if s <= 1:
+                c = 0.0
+            elif s == 2:
+                c = 1.0
+            else:
+                H = np.log(s - 1) + np.euler_gamma
+                c = 2 * (H - (1 - 1 / s))
+
+            message = f"Path length for selected point: {h:.0f} + {c:.3f} = {length:.3f}"
 
         return (
-            X.tolist(),
+            X.tolist() if X is not None else [],
             tree,
             depth_info,
             selected_index,
             fig,
-            message
+            message,
+            height_limit_display
         )
 
     # ----------------------------------------------
@@ -653,6 +699,7 @@ def update_itree(
                 stored_selected_index,
                 no_update,
                 no_update,
+                no_update
             )
 
         X = np.array(stored_X)
@@ -686,6 +733,7 @@ def update_itree(
                     stored_selected_index,
                     no_update,
                     no_update,
+                    no_update
                 )
 
         # ----------------------------------------------------
@@ -705,6 +753,7 @@ def update_itree(
                     stored_selected_index,
                     no_update,
                     no_update,
+                    no_update
                 )
 
             node = node_refs[node_idx]
@@ -718,6 +767,7 @@ def update_itree(
                     stored_selected_index,
                     no_update,
                     no_update,
+                    no_update
                 )
 
             # Choose first point in this leaf
@@ -734,6 +784,7 @@ def update_itree(
                 stored_selected_index,
                 no_update,
                 no_update,
+                no_update
             )
 
         # ----------------------------------------------------
@@ -757,6 +808,13 @@ def update_itree(
         fig = build_figure(X, tree, selected_index=selected_index)
         message = f"Path length for selected point: {h:.0f} + {c:.3f} = {length:.3f}"
 
+        # Height limit display remains same as before (based on current stored_X)
+        n_samples = len(X) if X is not None else 0
+        if n_samples <= 0:
+            height_limit_display = "—"
+        else:
+            height_limit_display = str(int(np.ceil(np.log2(max(1, n_samples)))))
+
         return (
             stored_X,        # data store unchanged
             tree,            # tree store unchanged
@@ -764,4 +822,5 @@ def update_itree(
             selected_index,
             fig,
             message,
+            height_limit_display
         )

@@ -106,8 +106,7 @@ class  IsolationForestAnomalyDetector():
                 np.random.choice(self.M, size=self.M, replace=True)
             ]
             # maximum depth = log2(n)
-            limit = int(np.ceil(np.log2(len(bootstrapped_X))))
-            iTree_idx = self.iTree(bootstrapped_X, counter=0, limit=limit)
+            iTree_idx = self.iTree(bootstrapped_X, c=0, l=int(np.ceil(np.log2(len(bootstrapped_X)))))
             self.forest.append(iTree_idx)
 
         return self.forest

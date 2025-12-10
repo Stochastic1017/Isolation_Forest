@@ -8,6 +8,7 @@ from dash.dependencies import Input, Output
 from binary_partition_page import binary_partition_layout
 from iTree_page import iTree_layout
 from path_length_page import path_length_layout
+from iForest_page import iForest_layout
 
 app = Dash(__name__, 
            suppress_callback_exceptions=True, 
@@ -33,6 +34,9 @@ def display_page(pathname):
     # Path Length Page
     elif pathname in ['/', '/path_length']:
         return path_length_layout
+
+    elif pathname in ['/', '/iforest']:
+        return iForest_layout 
     
     else:
         # Fallback (404)
